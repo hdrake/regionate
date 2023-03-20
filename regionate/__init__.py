@@ -1,3 +1,3 @@
-from .basins import *
-from .connected_basins import *
+from .basin import *
+from .region import *
 from .utilities import *
