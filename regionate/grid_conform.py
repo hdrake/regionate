@@ -15,8 +15,6 @@ def basin_boundary_grid_indices(
     coordnames={
         'h': ('geolon',   'geolat'  ),
         'q': ('geolon_c', 'geolat_c'),
-        'u': ('geolon_u', 'geolat_u'),
-        'v': ('geolon_v', 'geolat_v')
     }):
     i, j, lons_c, lats_c = sec.create_section_composite(
         ocean_grid[coordnames['q'][0]],
@@ -39,10 +37,7 @@ def basin_boundary_grid_indices(
 def basin_interior_grid_mask(
     b, ocean_grid,
     coordnames={
-        'h': ('geolon',   'geolat'  ),
-        'q': ('geolon_c', 'geolat_c'),
-        'u': ('geolon_u', 'geolat_u'),
-        'v': ('geolon_v', 'geolat_v')
+        'h': ('geolon', 'geolat'),
     }):
     Δlon = np.sum(np.diff(b.lons)[np.abs(np.diff(b.lons)) < 180])
     
