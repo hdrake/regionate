@@ -6,6 +6,7 @@ import sectionate as sec
 import numpy as np
 
 def conform_basin_to_ocean_grid(b, ocean_grid):
+    b.lons_input, b.lats_input = b.lons.copy(), b.lats.copy()
     b.i, b.j, b.lons, b.lats, b.lons_uv, b.lats_uv = basin_boundary_grid_indices(b, ocean_grid)
     b.mask = basin_interior_grid_mask(b, ocean_grid)
     return b
