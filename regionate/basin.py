@@ -14,15 +14,14 @@ class Basin:
         if counterclockwise is not None:
             self.counterclockwise = counterclockwise
         else:
-            self.counterclockwise = self.check_if_boundary_clockwise()
+            self.counterclockwise = self.is_boundary_counterclockwise()
         if force_ccw:
             self.make_counterclockwise()
 
     def copy(self, remove_duplicate_points=False):
         return Basin(self.lons.copy(), self.lats.copy(), self.name, counterclockwise=self.counterclockwise, remove_duplicate_points=remove_duplicate_points)
     
-    def check_if_boundary_clockwise(self):
-        
+    def is_boundary_counterclockwise(self):
         circumgeo = (np.abs(np.sum(np.diff(self.lons))) >= 180.) | (np.abs(np.sum(np.diff(self.lats))) >= 180.)
         if circumgeo:
             raise ValueError("""Keyword argument counterclockwise must be explicitly set for sections
