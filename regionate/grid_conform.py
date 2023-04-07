@@ -17,18 +17,21 @@ def basin_boundary_grid_indices(
         'h': ('geolon',   'geolat'  ),
         'q': ('geolon_c', 'geolat_c'),
     }):
+    
+    symmetric = ocean_grid[coordnames['h'][0]].shape!=ocean_grid[coordnames['q'][0]].shape
+    
     i, j, lons_c, lats_c = sec.create_section_composite(
         ocean_grid[coordnames['q'][0]],
         ocean_grid[coordnames['q'][1]],
         np.append(b.lons, b.lons[0]),
         np.append(b.lats, b.lats[0]),
+        symmetric,
         closed=True
     )
     
-    symmetric = ocean_grid[coordnames['h'][0]].shape==ocean_grid[coordnames['q'][0]].shape
-    uvindices = sec.transports.uvindices_from_qindices(i, j, symmetric)
-
-    lons_uv, lats_uv = sec.transports.uvcoords_from_uvindices(
+    uvindices = sec.uvindices_from_qindices(i, j, symmetric)
+    
+    lons_uv, lats_uv = sec.uvcoords_from_uvindices(
         ocean_grid,
         uvindices,
     )
