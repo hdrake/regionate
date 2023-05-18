@@ -77,3 +77,6 @@ def unique_lonlat(lons, lats, closeness_threshold=5.e3):
 
 def lon_mod(lon, lon_ref):
     return lon + 360. *np.round((lon_ref - lon)/360.)
+
+def loop(x):
+    return np.append(x, x[0])

@@ -1,0 +1,25 @@
+name: sectionate
+channels:
+  - conda-forge
+dependencies:
+  - python
+  - cartopy
+  - cftime
+  - dask
+  - ipython
+  - jupyterlab
+  - matplotlib
+  - netcdf4
+  - numba
+  - numpy
+  - pip
+  - pydap
+  - pytest
+  - scipy
+  - xarray
+  - xgcm >= 0.8
+  - regionmask
+  - contourpy
+  - geopandas
+  - pip:
+    - git+https://github.com/hdrake/sectionate.git
