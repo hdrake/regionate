@@ -8,15 +8,35 @@ from .grid_conform import (
 )
 
 class Region:
+    """
+    A named polygonal region defined by a list or array of geographical coordinates.
+    """
     def __init__(
         self,
         name,
         lons,
         lats,
-        counterclockwise=None,
         force_ccw=False,
         remove_duplicate_points=False
         ):
+        """
+        Create a Region object (named `name`) from arrays of (`lons`, `lats`).
+
+        Parameters
+        ----------
+        name : str
+            Name of the region
+        lons : list or np.ndarray
+            Longitudes (in degrees).
+        lats : list or np.ndarray
+            Latitudes (in degrees).
+        force_ccw : bool
+            Default: False. If True, checks if Region is clockwise and, if it is,
+            swaps the order of the points that define it such that it becomes counterclockwise.
+        remove_duplicate_points : bool
+            Default: False. If True, prunes any duplicate points from the input arrays (lons, lats).
+        """
+        
         self.name = name
         self.lons = lons
         self.lats = lats
@@ -24,18 +44,29 @@ class Region:
         if remove_duplicate_points:
             self.remove_duplicate_points()
 
-        if counterclockwise is not None:
-            self.counterclockwise = counterclockwise
-        else:
-            self.counterclockwise = is_section_counterclockwise(
-                loop(self.lons),
-                loop(self.lats)
-            )
+        self.counterclockwise = is_section_counterclockwise(
+            loop(self.lons),
+            loop(self.lats),
+            geometry="spherical"
+        )
             
         if force_ccw:
             self.make_counterclockwise()
 
     def copy(self, remove_duplicate_points=False):
+        """
+        Returns a copy of the Region.
+
+        Parameters
+        ----------
+        remove_duplicate_points : bool
+            Default: False. If True, prunes any duplicate points from the input arrays (lons, lats).
+            
+        Returns
+        ----------
+        region_copy : regionate.region.Region
+            Copy of the region.
+        """
         return Region(
             self.name,
             self.lons.copy(),
@@ -45,15 +76,29 @@ class Region:
         )
     
     def make_counterclockwise(self):
+        """
+        Checks if the section is clockwise and flips its direction if it is to make it counterclockwise.
+        """
         if not(self.counterclockwise):
             self.lons = self.lons[::-1]
             self.lats = self.lats[::-1]
             self.counterclockwise = True
 
     def remove_duplicate_points(self, closeness_threshold=5.e3):
+        """
+        Removes any duplicate points.
+        
+        Parameters
+        ----------
+        closeness_threshold : float
+            A short distance within which points are deemed to be identical. Default: 5.e3.
+        """
         self.lons, self.lats = unique_lonlat(self.lons, self.lats, closeness_threshold=closeness_threshold)
         
 class GriddedRegion(Region):
+    """
+    A named polygonal region that exactly conforms to the velocity faces of a C-grid ocean model.
+    """
     def __init__(
         self,
         name,
@@ -64,6 +109,23 @@ class GriddedRegion(Region):
         mask=None,
         ij=None
         ):
+        """
+        Create a Region object (named `name`) from arrays of (`lons`, `lats`) and an ocean model `grid`. 
+
+        Parameters
+        ----------
+        name : str
+            Name of the region
+        lons : list or np.ndarray
+            Longitudes (in degrees).
+        lats : list or np.ndarray
+            Latitudes (in degrees).
+        grid : xgcm.Grid
+        positive_in : bool
+            Default: True. If True, prunes any duplicate points from the input arrays (lons, lats).
+        mask : None or xr.DataArray
+        ij : None or list or np.ndarray
+        """
         self.grid = grid
         
         if len(lons)>=3 and len(lats)>=3 and ij is None:
