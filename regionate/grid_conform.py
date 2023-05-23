@@ -35,12 +35,27 @@ def mask_from_grid_boundaries(
     lons_c,
     lats_c,
     grid,
-    coordnames={'h': ('geolon', 'geolat')}
+    along_boundary=False,
+    coordnames={'h': ('geolon', 'geolat')},
     ):
     
     Δlon = np.sum(np.diff(lons_c)[np.abs(np.diff(lons_c)) < 180])
     
-    if np.abs(Δlon) < 180.:
+    if along_boundary:
+        polygon_geom = Polygon(zip(lons_c, lats_c))
+
+        crs = 'epsg:4326'
+        polygon = gpd.GeoDataFrame(index=[0], crs=crs, geometry=[polygon_geom])
+        basin_grid_mask = ~np.isnan(
+            regionmask.mask_geopandas(
+                polygon,
+                grid._ds[coordnames['h'][0]],
+                lat=grid._ds[coordnames['h'][1]],
+                wrap_lon=False
+            )
+        )
+        
+    elif np.abs(Δlon) < 180.:
         lons = loop(lons_c)
         lats = loop(lats_c)
         wrapped_lons = wrap_continuously(lons)
