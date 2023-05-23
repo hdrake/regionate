@@ -138,7 +138,15 @@ class GriddedRegion(Region):
             self.lats = lats
             self.i = ij[0]
             self.j = ij[1]
-            self.mask = mask
+            if mask is None:
+                self.mask = mask_from_grid_boundaries(
+                    self.lons,
+                    self.lats,
+                    self.grid,
+                    along_boundary=True
+                )
+            else:
+                self.mask = mask
         
         super().__init__(
             name=name,
