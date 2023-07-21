@@ -13,7 +13,9 @@ def load_CM4p25(z_coord="zstr"):
     diag_path = "/archive/Raphael.Dussin/FMS2019.01.03_devgfdl_20221223/CM4_piControl_c192_OM4p25_v8/gfdl.ncrc4-intel18-prod-openmp/pp/"
     
     suffix = z_suffixes[z_coord]
-    ds = xr.open_mfdataset(f"{diag_path}/{realm}_{frequency}_{suffix}/ts/{frequency}/10yr/*.0341*.nc", chunks={'time':1}, decode_times=False).isel(time=[0])
+    ds = xr.open_mfdataset(f"{diag_path}/{realm}_{frequency}_{suffix}/ts/{frequency}/10yr/*.034*.nc", chunks={'time':1}, decode_times=False).isel(time=[0])
+    ds_natv = xr.open_mfdataset(f"{diag_path}/{realm}_{frequency}/ts/{frequency}/5yr/*.034*sfdsi*.nc", chunks={'time':1}, decode_times=False).isel(time=[0])
+    ds = xr.merge([ds, ds_natv])
     og = xr.open_dataset(f"{diag_path}/{realm}_{frequency}_{suffix}/{realm}_{frequency}_{suffix}.static.nc")
     sg = xr.open_dataset("/archive/Raphael.Dussin/datasets/OM4p25/c192_OM4_025_grid_No_mg_drag_v20160808_unpacked/ocean_hgrid.nc")
     
