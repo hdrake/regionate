@@ -34,11 +34,10 @@ def grid_boundaries_from_mask(grid, mask):
         j_new[(j%1)==0.5] = np.floor(j[(j%1)==0.5]) + symmetric
         
         i_new, j_new = loop(i_new), loop(j_new)
+        ij_new = [(ii,jj) for (ii,jj) in zip(i_new, j_new)]
         
-        ij_new_unique = unique_list([(ii,jj) for (ii,jj) in zip(i_new, j_new)])
-        
-        i_new = np.array([i for (i,j) in ij_new_unique]).astype(np.int64)
-        j_new = np.array([j for (i,j) in ij_new_unique]).astype(np.int64)
+        i_new = np.array([i for (i,j) in ij_new]).astype(np.int64)
+        j_new = np.array([j for (i,j) in ij_new]).astype(np.int64)
         
         i_new, j_new = loop(i_new), loop(j_new)
         
