@@ -22,25 +22,20 @@ def grid_boundaries_from_mask(grid, mask):
     lons_list = []
     lats_list = []
     for c in contours:
-        i, j = c[:,0], c[:,1]
+        i, j = c[:-1,0], c[:-1,1]
+        
         i_new, j_new = i.copy(), j.copy()
-
+        
         i_inc = np.roll(i, -1)-i
         j_inc = np.roll(j, -1)-j
-
+        
         i_new[(i%1)==0.0] = (i - (i_inc<0))[(i%1)==0.0] + symmetric
         j_new[(j%1)==0.0] = (j - (j_inc<0))[(j%1)==0.0] + symmetric
         i_new[(i%1)==0.5] = np.floor(i[(i%1)==0.5]) + symmetric
         j_new[(j%1)==0.5] = np.floor(j[(j%1)==0.5]) + symmetric
         
-        i_new, j_new = loop(i_new), loop(j_new)
-        ij_new = [(ii,jj) for (ii,jj) in zip(i_new, j_new)]
-        
-        i_new = np.array([i for (i,j) in ij_new]).astype(np.int64)
-        j_new = np.array([j for (i,j) in ij_new]).astype(np.int64)
-        
-        i_new, j_new = loop(i_new), loop(j_new)
-        
+        i_new, j_new = loop(i_new).astype(np.int64), loop(j_new).astype(np.int64)
+                        
         i_list.append(i_new)
         j_list.append(j_new)
         
