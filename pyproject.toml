@@ -1,6 +1,6 @@
 [project]
 name = "regionate"
-version = "0.0.2"
+version = "0.0.1"
 authors = [
     {name="Henri F. Drake", email="hfdrake@uci.edu"},
 ]
