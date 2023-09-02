@@ -19,22 +19,35 @@ def load_CM4p25(z_coord="zstr"):
     
     ds = fix_grid_coords(ds, og, sg)
     return ds_to_grid(ds)
+
+def load_OM4p5(z_coord="zstr"):
+    realm = "ocean"
+    frequency = "monthly"
+    diag_path = "/archive/Jan-erik.Tesdal/FMS2021.02_mom6_20210630/OM4p5_JRA55do1.4_0netfw_cycle1/gfdl.ncrc4-intel18-prod/pp/"
+    
+    suffix = z_suffixes[z_coord]
+    ds = xr.open_mfdataset(f"{diag_path}/{realm}_{frequency}_{suffix}/ts/{frequency}/5yr/*2013*.nc", chunks={'time':1}, decode_times=False).isel(time=[0])
+    og = xr.open_dataset(f"{diag_path}/{realm}_{frequency}_{suffix}/{realm}_{frequency}_{suffix}.static.nc")
+    
+    ds = fix_grid_coords(ds, og, None)
+    return ds_to_grid(ds, xyloc="right")
     
     
 def fix_grid_coords(ds, og, sg):
     og['deptho'] = (
         og['deptho'].where(~np.isnan(og['deptho']), 0.)
     )
-    og = og.assign_coords({
-        'geolon'  : xr.DataArray(sg['x'][1::2,1::2].data, dims=["yh", "xh"]),
-        'geolat'  : xr.DataArray(sg['y'][1::2,1::2].data, dims=["yh", "xh"]),
-        'geolon_u': xr.DataArray(sg['x'][1::2,0::2].data, dims=["yh", "xq"]),
-        'geolat_u': xr.DataArray(sg['y'][1::2,0::2].data, dims=["yh", "xq"]),
-        'geolon_v': xr.DataArray(sg['x'][0::2,1::2].data, dims=["yq", "xh"]),
-        'geolat_v': xr.DataArray(sg['y'][0::2,1::2].data, dims=["yq", "xh"]),
-        'geolon_c': xr.DataArray(sg['x'][0::2,0::2].data, dims=["yq", "xq"]),
-        'geolat_c': xr.DataArray(sg['y'][0::2,0::2].data, dims=["yq", "xq"])
-    })
+    if sg is not None:
+        og = og.assign_coords({
+            'geolon'  : xr.DataArray(sg['x'][1::2,1::2].data, dims=["yh", "xh"]),
+            'geolat'  : xr.DataArray(sg['y'][1::2,1::2].data, dims=["yh", "xh"]),
+            'geolon_u': xr.DataArray(sg['x'][1::2,0::2].data, dims=["yh", "xq"]),
+            'geolat_u': xr.DataArray(sg['y'][1::2,0::2].data, dims=["yh", "xq"]),
+            'geolon_v': xr.DataArray(sg['x'][0::2,1::2].data, dims=["yq", "xh"]),
+            'geolat_v': xr.DataArray(sg['y'][0::2,1::2].data, dims=["yq", "xh"]),
+            'geolon_c': xr.DataArray(sg['x'][0::2,0::2].data, dims=["yq", "xq"]),
+            'geolat_c': xr.DataArray(sg['y'][0::2,0::2].data, dims=["yq", "xq"])
+        })
     
     ds = ds.assign_coords({
         'dxCv': xr.DataArray(
@@ -59,10 +72,10 @@ def fix_grid_coords(ds, og, sg):
     })
     return ds
 
-def ds_to_grid(ds, z_coord="zstr"):
+def ds_to_grid(ds, z_coord="zstr", xyloc="outer"):
     coords={
-        'X': {'center': 'xh', 'outer': 'xq'},
-        'Y': {'center': 'yh', 'outer': 'yq'}
+        'X': {'center': 'xh', xyloc: 'xq'},
+        'Y': {'center': 'yh', xyloc: 'yq'}
     }
     if "z_l" in ds.dims:
         coords = {
@@ -74,4 +87,4 @@ def ds_to_grid(ds, z_coord="zstr"):
             **coords,
             **{'Z': {'center': 'rho2_l', 'outer': 'rho2_i'}}
         }
-    return ds, xgcm.Grid(ds, coords=coords, periodic=["X"])
+    return xgcm.Grid(ds, coords=coords, boundary={"X":"periodic", "Y":"periodic", "Z":"extend"}, autoparse_metadata=False)
