@@ -71,7 +71,6 @@ class Region:
             self.name,
             self.lons.copy(),
             self.lats.copy(),
-            counterclockwise=self.counterclockwise,
             remove_duplicate_points=remove_duplicate_points
         )
     

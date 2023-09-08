@@ -26,7 +26,7 @@ def initialize_spherical_grid(N=6):
         'X': {'outer': 'xq', 'center': 'xh'},
         'Y': {'outer': 'yq', 'center': 'yh'}
     }
-    grid = xgcm.Grid(ds, coords=coords, periodic=["X"])
+    grid = xgcm.Grid(ds, coords=coords, boundary={"X":"periodic", "Y":"extend"}, autoparse_metadata=False)
     return grid
 
 def test_gridded_region_from_boundary():
@@ -37,7 +37,7 @@ def test_gridded_region_from_boundary():
     latseg = np.array([0., 0., 0., 0.])
 
     grid = initialize_spherical_grid()
-    region = GriddedRegion("Baltic", lonseg, latseg, grid)
+    region = GriddedRegion("test_region1", lonseg, latseg, grid)
 
     dists = distance_on_unit_sphere(
         region.lons,
@@ -47,7 +47,7 @@ def test_gridded_region_from_boundary():
     )
     assert np.all(np.isclose(dists, 0., atol=1.e-6))
 
-    region_rev = GriddedRegion("Baltic", lonseg[::-1], latseg[::-1], grid)
+    region_rev = GriddedRegion("test_region2", lonseg[::-1], latseg[::-1], grid)
     assert np.all(np.equal(region.mask, region_rev.mask))
     
 def test_gridded_region_from_mask():
