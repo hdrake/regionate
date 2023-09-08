@@ -15,7 +15,7 @@ classifiers = [
 dependencies = [
     "regionmask",
     "contourpy",
-    "sectionate @ git+https://github.com/hdrake/sectionate/"
+    "sectionate @ git+https://github.com/hdrake/sectionate.git@master"
 ]
 
 [project.urls]
