@@ -5,8 +5,6 @@ import regionmask
 import sectionate as sec
 import numpy as np
 
-import matplotlib.pyplot as plt
-
 from .utilities import *
 
 def get_region_boundary_grid_indices(lons, lats, grid):
