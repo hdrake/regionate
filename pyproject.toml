@@ -1,6 +1,6 @@
 [project]
 name = "regionate"
-version = "0.0.1"
+dynamic = ["version"]
 authors = [
     {name="Henri F. Drake", email="hfdrake@uci.edu"},
 ]
@@ -29,3 +29,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[tool.hatch.version]
+path = "regionate/version.py"
