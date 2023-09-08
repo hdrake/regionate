@@ -87,4 +87,6 @@ def ds_to_grid(ds, z_coord="zstr", xyloc="outer"):
             **coords,
             **{'Z': {'center': 'rho2_l', 'outer': 'rho2_i'}}
         }
-    return xgcm.Grid(ds, coords=coords, boundary={"X":"periodic", "Y":"periodic", "Z":"extend"}, autoparse_metadata=False)
+    boundary={"X":"periodic", "Y":"extend", "Z":"extend"}
+    
+    return xgcm.Grid(ds, coords=coords, boundary=boundary, autoparse_metadata=False)
