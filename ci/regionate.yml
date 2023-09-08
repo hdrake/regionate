@@ -1,4 +1,4 @@
-name: sectionate
+name: regionate
 channels:
   - conda-forge
 dependencies:
