@@ -4,7 +4,7 @@ version = "0.0.1"
 authors = [
     {name="Henri F. Drake", email="hfdrake@uci.edu"},
 ]
-description = "A package for creating xgcm-grid consistent regional masks and boundaries."
+description = "A package for creating xgcm-grid consistent regional masks and boundaries"
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [

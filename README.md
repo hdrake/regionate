@@ -1,6 +1,6 @@
-# Grid-consistent region masks and boundary indices for ocean models
+# regionate
 
-Leverages sibling package [`sectionate`](https://github.com/raphaeldussin/sectionate).
+A package for creating xgcm-grid consistent regional masks and boundaries, leveraging its sibling package [`sectionate`](https://github.com/raphaeldussin/sectionate).
 
 Quick Start Guide
 -----------------
