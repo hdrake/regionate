@@ -8,8 +8,6 @@ import numpy as np
 from .utilities import *
 
 def get_region_boundary_grid_indices(lons, lats, grid):
-    
-    symmetric = sec.check_symmetric(grid)
 
     if (lons[0], lats[0]) != (lons[-1], lats[-1]):
         lons, lats = loop(lons), loop(lats)
@@ -18,6 +16,7 @@ def get_region_boundary_grid_indices(lons, lats, grid):
         grid,
         lons,
         lats,
+        topology="MOM-tripolar"
     )
     
     uvindices = sec.uvindices_from_qindices(grid, i, j)

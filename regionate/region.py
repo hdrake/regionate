@@ -128,7 +128,12 @@ class GriddedRegion(Region):
         self.grid = grid
         
         if len(lons)>=3 and len(lats)>=3 and ij is None:
-            self.initiate_from_boundary(lons, lats, mask=mask, positive_in=positive_in)
+            self.initiate_from_boundary(
+                lons,
+                lats,
+                mask=mask,
+                positive_in=positive_in
+            )
         elif ij is None:
             raise NameError("Must provide lons and lats as lists or arrays\
             to define the region.")
