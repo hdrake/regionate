@@ -32,12 +32,12 @@ def group_overlaps(overlaps, r1, r2, closeness_threshold=5.e3):
     return grouped_overlaps
 
 
-def align_boundaries_with_overlap_sections(region, remove_gaps=True):
-    for rname, r in region.regions.items():
-        overlap_list = [o for o in list(region.overlaps) if rname in o]
+def align_boundaries_with_overlap_sections(regions, remove_gaps=True):
+    for rname, r in regions.region_dict.items():
+        overlap_list = [o for o in list(regions.overlaps) if rname in o]
         if len(overlap_list) != 0:
-            arbitrary_o = region.overlaps[overlap_list[0]][rname]
-            region.regions[rname] = roll_boundary_to_align_with_overlap(
+            arbitrary_o = regions.overlaps[overlap_list[0]][rname]
+            regions.region_dict[rname] = roll_boundary_to_align_with_overlap(
                 r, arbitrary_o, remove_gaps=remove_gaps
             )
             

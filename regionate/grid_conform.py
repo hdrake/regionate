@@ -8,7 +8,25 @@ import numpy as np
 from .utilities import *
 
 def get_region_boundary_grid_indices(lons, lats, grid):
+    """Find boundary coordinates and grid indices that approximate a polygon.
 
+    ARGUMENTS
+    ---------
+    lons : list or np.ndarray of longitudes
+    lats : list or np.ndarray of latitudes
+    grid : `xgcm.Grid` instance
+    
+    RETURNS
+    -------
+    (i, j, lons_c, lats_c, lons_uv, lats_uv)
+
+    i : "X"-axis grid indices of corner points
+    j : "Y"-axis grid indices of corner points
+    lons_c : longitudes of corner points
+    lats_c : latitudes of corner points
+    lons_uv : longitudes of (u,v) velocity faces
+    lats_uv : latitudes of (u,v) velocity faces
+    """
     if (lons[0], lats[0]) != (lons[-1], lats[-1]):
         lons, lats = loop(lons), loop(lats)
         
@@ -35,6 +53,17 @@ def mask_from_grid_boundaries(
     along_boundary=False,
     coordnames={'h': ('geolon', 'geolat')},
     ):
+    """Find mask bounded by a sequence of cell corner coordinates
+
+    ARGUMENTS
+    ---------
+    lons_c : list or np.ndarray of cell corner longitudes
+    lats_c : list or np.ndarray of cell corner latitudes
+    
+    RETURNS
+    -------
+    region_grid_mask : np.ndarray of bool type
+    """
     
     Δlon = np.sum(np.diff(lons_c)[np.abs(np.diff(lons_c)) < 180])
     
@@ -43,7 +72,7 @@ def mask_from_grid_boundaries(
 
         crs = 'epsg:4326'
         polygon = gpd.GeoDataFrame(index=[0], crs=crs, geometry=[polygon_geom])
-        basin_grid_mask = ~np.isnan(
+        region_grid_mask = ~np.isnan(
             regionmask.mask_geopandas(
                 polygon,
                 grid._ds[coordnames['h'][0]],
@@ -61,7 +90,7 @@ def mask_from_grid_boundaries(
 
         crs = 'epsg:4326'
         polygon = gpd.GeoDataFrame(index=[0], crs=crs, geometry=[polygon_geom])
-        basin_grid_mask = ~np.isnan(
+        region_grid_mask = ~np.isnan(
             regionmask.mask_geopandas(
                 polygon,
                 np.mod(grid._ds[coordnames['h'][0]]-minlon, 360.),
@@ -113,7 +142,7 @@ def mask_from_grid_boundaries(
         polygon_geom = Polygon(zip(lons, lats))
         crs = 'epsg:4326'
         polygon = gpd.GeoDataFrame(index=[0], crs=crs, geometry=[polygon_geom])
-        basin_grid_mask = ~np.isnan(
+        region_grid_mask = ~np.isnan(
             regionmask.mask_geopandas(
                 polygon,
                 grid._ds[coordnames['h'][0]],
@@ -122,7 +151,7 @@ def mask_from_grid_boundaries(
             )
         )
     
-    return basin_grid_mask
+    return region_grid_mask
 
 def wrap_continuously(x, limit_discontinuity=180.):
     new_x = x.copy()

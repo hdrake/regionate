@@ -6,6 +6,20 @@ from .utilities import loop, unique_list
 from sectionate.transports import check_symmetric
 
 def grid_boundaries_from_mask(grid, mask):
+    """Use `contourpy` to get indices of cell corners that bound the mask
+
+    Returns lists with a common length that is the number of discrete contours
+    that bound the mask.
+    
+    ARGUMENTS
+    ---------
+    grid : `xgcm.Grid` instance
+    mask : `xr.DataArray` instance of type `bool`
+    
+    RETURNS
+    -------
+    i_list, j_list, lons_list, lats_list
+    """
     
     symmetric = check_symmetric(grid)
     

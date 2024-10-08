@@ -57,10 +57,10 @@ def test_gridded_region_from_mask():
     
     # Two grid-cell wide interior region mask
     mask = xr.ones_like(grid._ds.geolon).where((grid._ds.xh==90.) & (np.abs(grid._ds.yh)<=10), 0.).astype(bool)
-    regions = MaskRegions(mask, grid).regions
-    assert len(regions)==1
+    region_dict = MaskRegions(mask, grid).region_dict
+    assert len(region_dict)==1
     
-    region = regions[0]
+    region = region_dict[0]
     assert np.all(
         modequal(region.lons, np.array([ 60., 120., 120., 120.,  60.,  60.])) &
         modequal(region.lats, np.array([-20., -20.,   0.,  20.,  20.,   0.]))
@@ -68,14 +68,14 @@ def test_gridded_region_from_mask():
     
     # Zonal strip mask
     mask = xr.ones_like(grid._ds.geolon).where(np.abs(grid._ds.yh)<=10, 0.).astype(bool)
-    region = MaskRegions(mask, grid).regions[0]
+    region = MaskRegions(mask, grid).region_dict[0]
     assert np.all(
         modequal(region.lons, np.array([360.,  60., 120., 180., 240., 300., 360., 360., 360., 300., 240., 180., 120.,  60., 360., 360.])) &
         modequal(region.lats, np.array([-20., -20., -20., -20., -20., -20., -20.,   0.,  20.,  20.,  20., 20.,  20.,  20.,  20.,   0.]))
     )
     
     # All but zonal strip mask (two separate regions outside)
-    region_inv = MaskRegions(~mask, grid).regions
+    region_inv = MaskRegions(~mask, grid).region_dict
     assert np.all(
         modequal(region_inv[0].lons, np.array([360.,  60., 120., 180., 240., 300., 360., 360., 360., 300., 240., 180., 120.,  60., 360., 360.])) &
         modequal(region_inv[0].lats, np.array([-60., -60., -60., -60., -60., -60., -60., -40., -20., -20., -20., -20., -20., -20., -20., -40.])) &

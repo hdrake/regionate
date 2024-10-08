@@ -22,7 +22,7 @@ class Region:
         """
         Create a Region object (named `name`) from arrays of (`lons`, `lats`).
 
-        Parameters
+        PARAMETERS
         ----------
         name : str
             Name of the region
@@ -35,6 +35,15 @@ class Region:
             swaps the order of the points that define it such that it becomes counterclockwise.
         remove_duplicate_points : bool
             Default: False. If True, prunes any duplicate points from the input arrays (lons, lats).
+
+        RETURNS
+        -------
+        Region instance
+
+        Examples
+        --------
+        >>> lons, lats = np.array([-80., -66., -65.]), np.array([ 26.,  18.,  32.])
+        >>> region = reg.Region("Bermuda Triangle", lons, lats)
         """
         
         self.name = name
@@ -57,12 +66,12 @@ class Region:
         """
         Returns a copy of the Region.
 
-        Parameters
+        PARAMETERS
         ----------
         remove_duplicate_points : bool
             Default: False. If True, prunes any duplicate points from the input arrays (lons, lats).
             
-        Returns
+        RETURNS
         ----------
         region_copy : regionate.region.Region
             Copy of the region.
@@ -87,7 +96,7 @@ class Region:
         """
         Removes any duplicate points.
         
-        Parameters
+        PARAMETERS
         ----------
         closeness_threshold : float
             A short distance within which points are deemed to be identical. Default: 5.e3.
@@ -111,7 +120,7 @@ class GriddedRegion(Region):
         """
         Create a Region object (named `name`) from arrays of (`lons`, `lats`) and an ocean model `grid`. 
 
-        Parameters
+        PARAMETERS
         ----------
         name : str
             Name of the region
@@ -122,8 +131,22 @@ class GriddedRegion(Region):
         grid : xgcm.Grid
         positive_in : bool
             Default: True. If True, prunes any duplicate points from the input arrays (lons, lats).
-        mask : None or xr.DataArray
-        ij : None or list or np.ndarray
+        mask : None or xr.DataArray (default: None)
+            If None, does not apply any mask.
+        ij : None or list
+            If None, the indices of grid coordinates closest to provided coordinates `self.i` and `self.j`
+            are inferred from the model grid. If list, assume two elements in the list and
+            extract `self.i = ij[0]` and `self.j = ij[1]`.
+
+        RETURNS
+        -------
+        GriddedRegion instance
+
+        Examples
+        --------
+        >>> grid = xgcm.Grid(...) # TO DO: minimal example grid
+        >>> lons, lats = np.array([-80., -66., -65.]), np.array([ 26.,  18.,  32.])
+        >>> region = reg.Region("Bermuda Triangle", lons, lats, grid)
         """
         self.grid = grid
         
@@ -165,6 +188,9 @@ class GriddedRegion(Region):
         positive_in=True,
         mask=None,
         ):
+        """
+        TO DO
+        """
 
         self.i, self.j, self.lons, self.lats, self.lons_uv, self.lats_uv = (
             get_region_boundary_grid_indices(
