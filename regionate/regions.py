@@ -104,7 +104,7 @@ class GriddedRegions(Regions):
         self.grid = grid
         
         try:
-            if all([type(v) in [Region, GriddedRegion] for v in region_dict.values])
+            if all([type(v) in [Region, GriddedRegion] for v in region_dict.values()]):
                 super().__init__(region_dict, name=name)
             else:
                 raise NameError("Values in `region_dict` dictionary must be of instances of `Region` or `GriddedRegion`.")
