@@ -1,9 +1,13 @@
 import numpy as np
+import xarray as xr
 
-from .region import Region, GriddedRegion
+from .region import Region, GriddedRegion, BoundedRegion, open_gr
 from .boundaries import grid_boundaries_from_mask
 from .overlaps import *
 from .utilities import *
+
+import os
+from pathlib import Path
 
 class Regions():
     """
@@ -93,7 +97,7 @@ class GriddedRegions(Regions):
 
         PARAMETERS
         ----------
-        region_dict : dictionary mapping region `name` (str) to `Region` or `GriddedRegion` instance
+        region_dict : dictionary mapping region `name` (str) to `Region`, `GriddedRegion`, or `BoundedRegion` instance
         name : str or None (default: None)
             Overarching name of the collection of regions
 
@@ -103,14 +107,31 @@ class GriddedRegions(Regions):
         """
         self.grid = grid
         
-        try:
-            if all([type(v) in [Region, GriddedRegion] for v in region_dict.values()]):
-                super().__init__(region_dict, name=name)
-            else:
-                raise NameError("Values in `region_dict` dictionary must be of instances of `Region` or `GriddedRegion`.")
-        except:
-            raise NameError("Must provide valid `region_dict` dictionary to initialize.")
-            
+        super().__init__(region_dict, name=name)
+        # try:
+        #     if all([type(v) in [Region, GriddedRegion, BoundedRegion] for v in region_dict.values()]):
+        #         super().__init__(region_dict, name=name)
+        #     else:
+        #         raise NameError("""Values in `region_dict` dictionary must be instances of
+        #         `Region`, `GriddedRegion`, or `BoundedRegion`.""")
+        # except:
+        #     raise NameError("Must provide valid `region_dict` dictionary to initialize.")
+
+    def to_grs(self, path):
+        
+        # Create .grs file directory
+        grs_path = f"{path}{self.name.replace(" ","_")}.grs"
+        Path(grs_path).mkdir(parents=True, exist_ok=True)
+
+        # Write grid dataset (without variables) to NetCDF file
+        grid = self.grid
+        grid_path = f"{grs_path}/grid.nc"
+        grid._ds.drop_vars([v for v in grid._ds.data_vars]).to_netcdf(grid_path)
+
+        # Write boundary information for each region to separate .gr file directory
+        for region_name, region in self.region_dict.items():
+            region.to_gr(f"{grs_path}/")
+
 class MaskRegions(GriddedRegions):
     """
     A dictionary of polygonal regions that exactly conform to the velocity faces bounding a mask in a C-grid ocean model.
@@ -158,6 +179,17 @@ class MaskRegions(GriddedRegions):
             in enumerate(zip(i_list, j_list, lons_list, lats_list))
         }
         super().__init__(region_dict, grid, name=name)
+
+def open_grs(path, ds_to_grid):
+    name = path.split("/")[-1][:-4]
+    grid = ds_to_grid(xr.open_dataset(f"{path}/grid.nc"))
+    grs_files = [f for f in os.listdir(f"{path}/") if f!="grid.nc"]
+    region_dict = {}
+    for gr_file in grs_files:
+        gr_name = gr_file[:-3]
+        region_dict[gr_name] = open_gr(f"{path}/{gr_file}", ds_to_grid)
+
+    return GriddedRegions(region_dict, grid, name=name)
 
 def sorted_tuple(s):
     """Sort tuples (by integer)"""
