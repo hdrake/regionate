@@ -57,8 +57,9 @@ def mask_from_grid_boundaries(
 
     ARGUMENTS
     ---------
-    lons_c : list or np.ndarray of cell corner longitudes
-    lats_c : list or np.ndarray of cell corner latitudes
+    lons_c [list or np.ndarray] -- cell corner longitudes
+    lats_c [list or np.ndarray] -- cell corner latitudes
+    grid [xgcm.Grid] -- ocean model grid
     
     RETURNS
     -------
@@ -125,20 +126,26 @@ def mask_from_grid_boundaries(
         lats = np.roll(lats[::s], -roll_idx)[::s]
         lons[::s][-roll_idx:] = lons[::s][-roll_idx:]
 
+        # Make sure that we get everything to the South
         min_idx = np.argmin(lons)
+        max_idx = np.argmax(lons)
         lons = np.append(
             lons, [
-                lons[-1],
-                lons[0],
+                lons[max_idx]+10,
+                lons[max_idx]+10,
+                lons[min_idx]-10,
+                lons[min_idx]-10
             ]
         )
         lats = np.append(
             lats, [
+                lats[max_idx],
                 -90,
                 -90,
+                lats[min_idx]
             ]
         )
-
+        
         polygon_geom = Polygon(zip(lons, lats))
         crs = 'epsg:4326'
         polygon = gpd.GeoDataFrame(index=[0], crs=crs, geometry=[polygon_geom])
