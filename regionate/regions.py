@@ -34,7 +34,7 @@ class Regions():
         Examples
         --------
         >>> lons, lats = np.array([-80., -66., -65.]), np.array([ 26.,  18.,  32.])
-        >>> region = reg.Region("Bermuda Triangle", lons, lats)
+        >>> region = reg.Region('Bermuda Triangle', lons, lats)
         >>> regions = reg.Regions({region.name: region})
         """
         if type(region_dict) == dict:
@@ -108,19 +108,19 @@ class GriddedRegions(Regions):
         self.grid = grid
         
         super().__init__(region_dict, name=name)
-        # try:
-        #     if all([type(v) in [Region, GriddedRegion, BoundedRegion] for v in region_dict.values()]):
-        #         super().__init__(region_dict, name=name)
-        #     else:
-        #         raise NameError("""Values in `region_dict` dictionary must be instances of
-        #         `Region`, `GriddedRegion`, or `BoundedRegion`.""")
-        # except:
-        #     raise NameError("Must provide valid `region_dict` dictionary to initialize.")
+        try:
+            if all([type(v) in [Region, GriddedRegion, BoundedRegion] for v in region_dict.values()]):
+                super().__init__(region_dict, name=name)
+            else:
+                raise NameError("""Values in `region_dict` dictionary must be instances of
+                `Region`, `GriddedRegion`, or `BoundedRegion`.""")
+        except:
+            raise NameError("Must provide valid `region_dict` dictionary to initialize.")
 
     def to_grs(self, path):
         
         # Create .grs file directory
-        grs_path = f"{path}{self.name.replace(" ","_")}.grs"
+        grs_path = f"{path}{self.name.replace(' ','_')}.grs"
         Path(grs_path).mkdir(parents=True, exist_ok=True)
 
         # Write grid dataset (without variables) to NetCDF file
@@ -181,9 +181,9 @@ class MaskRegions(GriddedRegions):
         super().__init__(region_dict, grid, name=name)
 
 def open_grs(path, ds_to_grid):
-    name = path.split("/")[-1][:-4]
+    name = path.split('/')[-1][:-4]
     grid = ds_to_grid(xr.open_dataset(f"{path}/grid.nc"))
-    grs_files = [f for f in os.listdir(f"{path}/") if f!="grid.nc"]
+    grs_files = [f for f in os.listdir(f"{path}/") if f!='grid.nc']
     region_dict = {}
     for gr_file in grs_files:
         gr_name = gr_file[:-3]

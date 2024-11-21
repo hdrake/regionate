@@ -48,7 +48,7 @@ class Region:
         Examples
         --------
         >>> lons, lats = np.array([-80., -66., -65.]), np.array([ 26.,  18.,  32.])
-        >>> region = reg.Region("Bermuda Triangle", lons, lats)
+        >>> region = reg.Region('Bermuda Triangle', lons, lats)
         """
         
         self.name = name
@@ -61,7 +61,7 @@ class Region:
         self.counterclockwise = is_section_counterclockwise(
             loop(self.lons),
             loop(self.lats),
-            geometry="spherical"
+            geometry='spherical'
         )
             
         if force_ccw:
@@ -113,7 +113,7 @@ class Region:
         )
 
     def __repr__(self):
-        return f"""{str(type(self))[8:-2]}("{self.name}")"""
+        return f"{str(type(self))[8:-2]}('{self.name}')"
         
 class GriddedRegion(Region):
     """
@@ -158,7 +158,7 @@ class GriddedRegion(Region):
         --------
         >>> grid = xgcm.Grid(...) # TO DO: minimal example grid
         >>> lons, lats = np.array([-80., -66., -65.]), np.array([ 26.,  18.,  32.])
-        >>> region = reg.Region("Bermuda Triangle", lons, lats, grid)
+        >>> region = reg.Region('Bermuda Triangle', lons, lats, grid)
         """
         self.grid = grid
         self.save = {}
@@ -240,9 +240,9 @@ class GriddedRegion(Region):
 
         Example
         -------
-        >>> gridded_region.save("../data/")
+        >>> gridded_region.save('../data/')
         """
-        gr_path = f"{path}/{self.name.replace(" ","_")}.gr/"
+        gr_path = f"{path}/{self.name.replace(' ','_')}.gr/"
         Path(gr_path).mkdir(parents=True, exist_ok=True)
 
         grid_path = f"{gr_path}/grid.nc"
@@ -254,17 +254,17 @@ class GriddedRegion(Region):
             grid._ds.drop_vars([v for v in grid._ds.data_vars]).to_netcdf(grid_path)
 
         # Write boundary information to NetCDF file
-        vertex = xr.DataArray(np.arange(0, self.i.size), dims=("vertex",))
-        face = xr.DataArray(np.arange(0.5, self.i.size-1), dims=("face",))
-        ds = xr.Dataset({}, coords={"vertex": vertex, "face": face})
-        for v in ["lons", "lats", "i", "j"]:
+        vertex = xr.DataArray(np.arange(0, self.i.size), dims=('vertex',))
+        face = xr.DataArray(np.arange(0.5, self.i.size-1), dims=('face',))
+        ds = xr.Dataset({}, coords={'vertex': vertex, 'face': face})
+        for v in ['lons', 'lats', 'i', 'j']:
             var = getattr(self,v)
-            if v in ["lons", "lats"]:
+            if v in ['lons', 'lats']:
                 var = loop(var)
-            ds[v] = xr.DataArray(var, dims=("vertex",))
-        for v in ["lons_uv", "lats_uv"]:
-            ds[v] = xr.DataArray(getattr(self,v), dims=("face",))
-        ds["mask"] = self.mask
+            ds[v] = xr.DataArray(var, dims=('vertex',))
+        for v in ['lons_uv', 'lats_uv']:
+            ds[v] = xr.DataArray(getattr(self,v), dims=('face',))
+        ds['mask'] = self.mask
         ds.to_netcdf(f"{gr_path}/region.nc")
 
         for (k,v) in self.save.items():
@@ -274,15 +274,15 @@ class GriddedRegion(Region):
         child_path = f"{gr_path}/children/"
         Path(child_path).mkdir(parents=True, exist_ok=True)
         for child in self.children.values():
-            child_name = child.name.replace(" ","_")
+            child_name = child.name.replace(' ','_')
             sec_path = f"{gr_path}/children/{child_name}.sec"
             Path(sec_path).mkdir(parents=True, exist_ok=True)
             
-            vertex = xr.DataArray(np.arange(0, child.i.size), dims=("vertex",))
-            ds = xr.Dataset({}, coords={"vertex": vertex})
-            for k in ["lons", "lats", "i", "j"]:
+            vertex = xr.DataArray(np.arange(0, child.i.size), dims=('vertex',))
+            ds = xr.Dataset({}, coords={'vertex': vertex})
+            for k in ['lons', 'lats', 'i', 'j']:
                 var = getattr(child,k)
-                ds[k] = xr.DataArray(var, dims=("vertex",))
+                ds[k] = xr.DataArray(var, dims=('vertex',))
             ds.to_netcdf(f"{sec_path}/section.nc")
             for k, ds_save in child.save.items():
                 ds_save.to_netcdf(f"{sec_path}/{k}.nc")
@@ -297,8 +297,32 @@ class BoundedRegion(GriddedRegion):
             **kwargs
         )
         self.children = {}
+
+        def is_slice_in_list(s,l):
+            """Check if a list slice (ordered sublist) is contained in list"""
+            len_s = len(s) #so we don't recompute length of s on every iteration
+            return any(s == l[i:len_s+i] for i in range(len(l) - len_s+1))
+            
         for child_name, child in section.children.items():
             i, j, lons, lats = sec.grid_section(grid, child.lons, child.lats)
+            
+            lonlat_parent = sec.coords_from_lonlat(loop(self.lons), loop(self.lats))
+            lonlat_child = sec.coords_from_lonlat(lons, lats)
+            if not(is_slice_in_list(lonlat_child, lonlat_parent)):
+                if is_slice_in_list(lonlat_child[::-1], lonlat_parent):
+                    child.lons = child.lons[::-1]
+                    child.lats = child.lats[::-1]
+                    i, j = i[::-1], j[::-1]
+                    lons, lats = lons[::-1], lats[::-1]
+                else:
+                    child.lons = child.lons[::-1]
+                    child.lats = child.lats[::-1]
+                    i, j, lons, lats = sec.grid_section(grid, child.lons, child.lats)
+                    lonlat_parent = sec.coords_from_lonlat(loop(self.lons), loop(self.lats))
+                    lonlat_child = sec.coords_from_lonlat(lons, lats)
+                    if not(is_slice_in_list(lonlat_child, lonlat_parent)):
+                        raise ValueError("Child sections do not match up with parent ones!")  
+
             coords = sec.coords_from_lonlat(lons, lats)
             child_section = sec.Section(
                 child_name,
@@ -316,7 +340,7 @@ def open_gr(path, ds_to_grid):
     grid = ds_to_grid(ds_grid)
     ds = xr.open_dataset(f"{path}/region.nc")
     
-    name = path.split("/")[-1][:-3].replace("_", " ")
+    name = path.split('/')[-1][:-3].replace('_',' ')
     region = GriddedRegion(
         name,
         ds.lons.values,
@@ -327,10 +351,10 @@ def open_gr(path, ds_to_grid):
     )
     gr_files = [
         f for f in os.listdir(f"{path}/")
-        if (".nc" in f) and (f not in ["grid.nc", "region.nc"])
+        if ('.nc' in f) and (f not in ['grid.nc', 'region.nc'])
     ]
     for file in gr_files:
-        v = file.split(".")[0]
+        v = file.split('.')[0]
         region.save[v] = xr.open_dataset(f"{path}/{file}")
 
     region.children = {}
@@ -340,7 +364,7 @@ def open_gr(path, ds_to_grid):
         for file in os.listdir(children_path)
     ]
     for child_path in child_paths:
-        child_name = child_path.split("/")[-1][:-4].replace("_", " ")
+        child_name = child_path.split('/')[-1][:-4].replace('_', ' ')
         ds = xr.open_dataset(f"{child_path}/section.nc")
         
         section = sec.Section(
@@ -349,8 +373,8 @@ def open_gr(path, ds_to_grid):
         )
         
         section.save = {}
-        for file in [f for f in os.listdir(child_path) if f != "section.nc"]:
-            v = file.split(".")[0]
+        for file in [f for f in os.listdir(child_path) if f != 'section.nc']:
+            v = file.split('.')[0]
             section.save[v] = xr.open_dataset(f"{child_path}/{file}")
 
         region.children[child_name] = section
