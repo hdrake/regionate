@@ -13,15 +13,18 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
+    "proj",
+    "pyproj",
+    "geopandas",
     "regionmask",
     "contourpy",
-    "sectionate @ git+https://github.com/hdrake/sectionate.git@master"
+    "sectionate @ git+https://github.com/MOM6-community/sectionate.git@master"
 ]
 
 [project.urls]
 "Homepage" = "https://github.com/hdrake/regionate"
 "Bugs/Issues/Features" = "https://github.com/hdrake/regionate/issues"
-"Sibling package" = "https://github.com/hdrake/sectionate"
+"Sibling package" = "https://github.com/MOM6-community/sectionate"
 
 [build-system]
 requires = ["hatchling"]

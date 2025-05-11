@@ -67,11 +67,11 @@ def mask_from_grid_boundaries(
     """
     
     Δlon = np.sum(np.diff(lons_c)[np.abs(np.diff(lons_c)) < 180])
+    crs = 'epsg:4326'
     
     if along_boundary:
         polygon_geom = Polygon(zip(lons_c, lats_c))
 
-        crs = 'epsg:4326'
         polygon = gpd.GeoDataFrame(index=[0], crs=crs, geometry=[polygon_geom])
         region_grid_mask = ~np.isnan(
             regionmask.mask_geopandas(
@@ -89,7 +89,6 @@ def mask_from_grid_boundaries(
         minlon = np.min(wrapped_lons)
         polygon_geom = Polygon(zip(np.mod(wrapped_lons-minlon, 360.), lats))
 
-        crs = 'epsg:4326'
         polygon = gpd.GeoDataFrame(index=[0], crs=crs, geometry=[polygon_geom])
         region_grid_mask = ~np.isnan(
             regionmask.mask_geopandas(
@@ -147,7 +146,6 @@ def mask_from_grid_boundaries(
         )
         
         polygon_geom = Polygon(zip(lons, lats))
-        crs = 'epsg:4326'
         polygon = gpd.GeoDataFrame(index=[0], crs=crs, geometry=[polygon_geom])
         region_grid_mask = ~np.isnan(
             regionmask.mask_geopandas(

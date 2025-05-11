@@ -14,9 +14,9 @@ pip install git+https://github.com/hdrake/regionate.git@main
 ```bash
 git clone git@github.com:hdrake/regionate.git
 cd regionate
-conda env create -f ci/environment.yml
-conda activate test_env_regionate
+conda env create -f docs/environment.yml
+conda activate docs_env_regionate
 pip install -e .
-python -m ipykernel install --user --name regionate --display-name "test_env_regionate"
+python -m ipykernel install --user --name docs_env_regionate --display-name "docs_env_regionate"
 jupyter-lab
 ```
