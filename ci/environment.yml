@@ -3,14 +3,4 @@ channels:
   - conda-forge
 dependencies:
   - python >= 3.8
-  - cartopy
-  - cftime
-  - ipython
-  - jupyterlab
-  - matplotlib
-  - netcdf4
-  - pydap
   - pytest
-  - pip
-  - pip:
-    - git+https://github.com/hdrake/sectionate.git@master
