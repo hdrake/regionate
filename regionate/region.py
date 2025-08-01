@@ -298,41 +298,77 @@ class BoundedRegion(GriddedRegion):
         )
         self.children = {}
 
-        def is_slice_in_list(s,l):
-            """Check if a list slice (ordered sublist) is contained in list"""
-            len_s = len(s) #so we don't recompute length of s on every iteration
-            return any(s == l[i:len_s+i] for i in range(len(l) - len_s+1))
+        def slice_indices_in_list(s, l):
+            """
+            Return a list of indices in `l` where elements of slice `s` appear in order.
+            Returns list of indices if found, else None.
+            """
+            len_s = len(s)
+            for i in range(len(l) - len_s + 1):
+                if s == l[i:i+len_s]:
+                    return np.array(list(range(i, i+len_s)), dtype=int)
+            return None
+
+        # Create the parent gridded section
+        parent_section_gridded = sec.GriddedSection(
+            sec.Section(
+                section.name,
+                (self.lons_c, self.lats_c),
+            ),
+            grid,
+            i_c = self.i_c,
+            j_c = self.j_c
+        )
+        parent_lons_uv, parent_lats_uv = sec.uvcoords_from_qindices(
+            grid,
+            parent_section_gridded.i_c,
+            parent_section_gridded.j_c
+        )
+        parent_coords_uv = sec.coords_from_lonlat(parent_lons_uv, parent_lats_uv)
             
         for child_name, child in section.children.items():
-            i, j, lons, lats = sec.grid_section(grid, child.lons_c, child.lats_c)
+            i_c, j_c, lons_c, lats_c = sec.grid_section(grid, child.lons_c, child.lats_c)
             
-            lonlat_parent = sec.coords_from_lonlat(loop(self.lons_c), loop(self.lats_c))
-            lonlat_child = sec.coords_from_lonlat(lons, lats)
-            if not(is_slice_in_list(lonlat_child, lonlat_parent)):
-                if is_slice_in_list(lonlat_child[::-1], lonlat_parent):
-                    child.lons_c = child.lons_c[::-1]
-                    child.lats_c = child.lats_c[::-1]
-                    i, j = i[::-1], j[::-1]
-                    lons, lats = lons[::-1], lats[::-1]
-                else:
-                    child.lons_c = child.lons_c[::-1]
-                    child.lats_c = child.lats_c[::-1]
-                    i, j, lons, lats = sec.grid_section(grid, child.lons_c, child.lats_c)
-                    lonlat_parent = sec.coords_from_lonlat(loop(self.lons_c), loop(self.lats_c))
-                    lonlat_child = sec.coords_from_lonlat(lons, lats)
-                    if not(is_slice_in_list(lonlat_child, lonlat_parent)):
-                        raise ValueError("Child sections do not match up with parent ones!")  
+            child_coords = sec.coords_from_lonlat(lons_c, lats_c)
 
-            coords = sec.coords_from_lonlat(lons, lats)
+            # Find the indices in the parent's corner sections that correspond this child
+            parent_idx_c = slice_indices_in_list(child_coords, parent_section_gridded.coords)
+            if parent_idx_c is not None:
+                pass  # child orientation matches parent
+            else:
+                parent_idx_c = slice_indices_in_list(child_coords[::-1], parent_section_gridded.coords)
+                if parent_idx_c is not None:
+                    # reversed slice is in the parent list
+                    child.lons_c = child.lons_c[::-1]
+                    child.lats_c = child.lats_c[::-1]
+                    # recompute the child sections using the correct orientation
+                    i_c, j_c, lons_c, lats_c = sec.grid_section(grid, child.lons_c, child.lats_c)
+                else:
+                    raise ValueError("Child corner sections do not match up with parent ones!")
+            
+            # Find the indices in the parent's velocity sections that correspond this child
+            lons_uv, lats_uv = sec.uvcoords_from_qindices(grid, i_c, j_c)
+            child_coords_uv = sec.coords_from_lonlat(lons_uv, lats_uv)
+            parent_idx_uv = slice_indices_in_list(child_coords_uv, parent_coords_uv)
+            if parent_idx_uv is None:
+                raise ValueError("Child velocity sections do not match up with parent ones!")
+
+            child_coords = sec.coords_from_lonlat(lons_c, lats_c)
             child_section = sec.Section(
                 child_name,
-                coords,
+                child_coords,
                 children={},
-                parents={}
+                parent=parent_section_gridded
             )
-            child_section.i_c = i
-            child_section.j_c = j
-            self.children[child_name] = child_section
+            child_section_gridded = sec.GriddedSection(
+                child_section,
+                grid,
+                i_c = i_c,
+                j_c = j_c,
+            )
+            child_section_gridded.parent_idx_c = parent_idx_c
+            child_section_gridded.parent_idx_uv = parent_idx_uv
+            self.children[child_name] = child_section_gridded
 
 def open_gr(path, ds_to_grid):
 

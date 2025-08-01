@@ -36,15 +36,9 @@ def get_region_boundary_grid_indices(lons, lats, grid):
         lats,
         topology="MOM-tripolar"
     )
-    
-    uvindices = sec.uvindices_from_qindices(grid, i_c, j_c)
-    
-    lons_uv, lats_uv = sec.uvcoords_from_uvindices(
-        grid,
-        uvindices
-    )
+    lons_uv, lats_uv = sec.uvcoords_from_qindices(grid, i_c, j_c)
 
-    return (i_c, j_c, lons_c[:-1], lats_c[:-1], lons_uv, lats_uv)
+    return (i_c, j_c, lons_c, lats_c, lons_uv, lats_uv)
 
 def mask_from_grid_boundaries(
     lons_c,

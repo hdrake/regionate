@@ -34,7 +34,7 @@ def test_gridded_region_from_boundary():
     from sectionate import distance_on_unit_sphere
 
     lonseg = np.array([0., 120., 240, 360.])
-    latseg = np.array([0., 0., 0., 0.])
+    latseg = np.array([0.,   0.,   0.,  0.])
 
     grid = initialize_spherical_grid()
     region = GriddedRegion("test_region1", lonseg, latseg, grid)
@@ -42,8 +42,8 @@ def test_gridded_region_from_boundary():
     dists = distance_on_unit_sphere(
         region.lons_c,
         region.lats_c,
-        np.array([360.,  60., 120., 180., 240., 300.]),
-        np.array([0., 0., 0., 0., 0., 0.])
+        np.array([0.,  60., 120., 180., 240., 300., 360.]),
+        np.array([0.,   0.,   0.,   0.,   0.,   0.,   0.])
     )
     assert np.all(np.isclose(dists, 0., atol=1.e-6))
 
