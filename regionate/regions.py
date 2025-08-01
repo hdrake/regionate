@@ -118,6 +118,9 @@ class GriddedRegions(Regions):
             raise NameError("Must provide valid `region_dict` dictionary to initialize.")
 
     def to_grs(self, path):
+        """
+        TO DO
+        """
         
         # Create .grs file directory
         grs_path = f"{path}{self.name.replace(' ','_')}.grs"
@@ -161,7 +164,7 @@ class MaskRegions(GriddedRegions):
         self.grid = grid
         self.mask = mask
         
-        i_list, j_list, lons_list, lats_list = grid_boundaries_from_mask(
+        i_c_list, j_c_list, lons_c_list, lats_c_list = grid_boundaries_from_mask(
             self.grid,
             mask
         )
@@ -169,18 +172,34 @@ class MaskRegions(GriddedRegions):
         region_dict = {
             r_num: GriddedRegion(
                 str(r_num),
-                lons,
-                lats,
+                lons_c,
+                lats_c,
                 self.grid,
                 mask=mask,
-                ij=(i,j)
+                ij=(i_c,j_c)
             )
-            for r_num, (i, j, lons, lats)
-            in enumerate(zip(i_list, j_list, lons_list, lats_list))
+            for r_num, (i_c, j_c, lons_c, lats_c)
+            in enumerate(zip(i_c_list, j_c_list, lons_c_list, lats_c_list))
         }
         super().__init__(region_dict, grid, name=name)
 
 def open_grs(path, ds_to_grid):
+    """
+    Creates a GriddedRegions instance from a .grs file format
+
+    PARAMETERS
+    ----------
+    path : str
+        path to .grs directory
+    ds_to_grid : function
+        a function whose only argument is an xr.Dataset object.
+        This function turns `xr.open_dataset(f"{path}/grid.nc")`
+        into a corresponding `xgcm.Grid` object.
+
+    RETURNS
+    -------
+    `GriddedRegions` instance
+    """
     name = path.split('/')[-1][:-4]
     grid = ds_to_grid(xr.open_dataset(f"{path}/grid.nc"))
     grs_files = [f for f in os.listdir(f"{path}/") if f!='grid.nc']

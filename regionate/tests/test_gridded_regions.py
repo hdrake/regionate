@@ -34,16 +34,16 @@ def test_gridded_region_from_boundary():
     from sectionate import distance_on_unit_sphere
 
     lonseg = np.array([0., 120., 240, 360.])
-    latseg = np.array([0., 0., 0., 0.])
+    latseg = np.array([0.,   0.,   0.,  0.])
 
     grid = initialize_spherical_grid()
     region = GriddedRegion("test_region1", lonseg, latseg, grid)
 
     dists = distance_on_unit_sphere(
-        region.lons,
-        region.lats,
-        np.array([360.,  60., 120., 180., 240., 300.]),
-        np.array([0., 0., 0., 0., 0., 0.])
+        region.lons_c,
+        region.lats_c,
+        np.array([0.,  60., 120., 180., 240., 300., 360.]),
+        np.array([0.,   0.,   0.,   0.,   0.,   0.,   0.])
     )
     assert np.all(np.isclose(dists, 0., atol=1.e-6))
 
@@ -62,25 +62,25 @@ def test_gridded_region_from_mask():
     
     region = region_dict[0]
     assert np.all(
-        modequal(region.lons, np.array([ 60., 120., 120., 120.,  60.,  60.])) &
-        modequal(region.lats, np.array([-20., -20.,   0.,  20.,  20.,   0.]))
+        modequal(region.lons_c, np.array([ 60., 120., 120., 120.,  60.,  60.])) &
+        modequal(region.lats_c, np.array([-20., -20.,   0.,  20.,  20.,   0.]))
     )
     
     # Zonal strip mask
     mask = xr.ones_like(grid._ds.geolon).where(np.abs(grid._ds.yh)<=10, 0.).astype(bool)
     region = MaskRegions(mask, grid).region_dict[0]
     assert np.all(
-        modequal(region.lons, np.array([360.,  60., 120., 180., 240., 300., 360., 360., 360., 300., 240., 180., 120.,  60., 360., 360.])) &
-        modequal(region.lats, np.array([-20., -20., -20., -20., -20., -20., -20.,   0.,  20.,  20.,  20., 20.,  20.,  20.,  20.,   0.]))
+        modequal(region.lons_c, np.array([360.,  60., 120., 180., 240., 300., 360., 360., 360., 300., 240., 180., 120.,  60., 360., 360.])) &
+        modequal(region.lats_c, np.array([-20., -20., -20., -20., -20., -20., -20.,   0.,  20.,  20.,  20., 20.,  20.,  20.,  20.,   0.]))
     )
     
     # All but zonal strip mask (two separate regions outside)
     region_inv = MaskRegions(~mask, grid).region_dict
     assert np.all(
-        modequal(region_inv[0].lons, np.array([360.,  60., 120., 180., 240., 300., 360., 360., 360., 300., 240., 180., 120.,  60., 360., 360.])) &
-        modequal(region_inv[0].lats, np.array([-60., -60., -60., -60., -60., -60., -60., -40., -20., -20., -20., -20., -20., -20., -20., -40.])) &
-        modequal(region_inv[1].lons, np.array([360.,  60., 120., 180., 240., 300., 360., 360., 360., 300., 240., 180., 120.,  60., 360., 360.])) &
-        modequal(region_inv[1].lats, np.array([20.,   20.,  20.,  20.,  20.,  20.,  20.,  40.,  60.,  60.,  60.,  60.,  60.,  60.,  60.,  40.]))
+        modequal(region_inv[0].lons_c, np.array([360.,  60., 120., 180., 240., 300., 360., 360., 360., 300., 240., 180., 120.,  60., 360., 360.])) &
+        modequal(region_inv[0].lats_c, np.array([-60., -60., -60., -60., -60., -60., -60., -40., -20., -20., -20., -20., -20., -20., -20., -40.])) &
+        modequal(region_inv[1].lons_c, np.array([360.,  60., 120., 180., 240., 300., 360., 360., 360., 300., 240., 180., 120.,  60., 360., 360.])) &
+        modequal(region_inv[1].lats_c, np.array([20.,   20.,  20.,  20.,  20.,  20.,  20.,  40.,  60.,  60.,  60.,  60.,  60.,  60.,  60.,  40.]))
     )
 
 def modequal(a,b):

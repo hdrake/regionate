@@ -52,15 +52,15 @@ class Region:
         """
         
         self.name = name
-        self.lons = lons
-        self.lats = lats
+        self.lons_c = lons
+        self.lats_c = lats
         
         if remove_duplicate_points:
             self.remove_duplicate_points()
 
         self.counterclockwise = is_section_counterclockwise(
-            loop(self.lons),
-            loop(self.lats),
+            loop(self.lons_c),
+            loop(self.lats_c),
             geometry='spherical'
         )
             
@@ -83,8 +83,8 @@ class Region:
         """
         return Region(
             self.name,
-            self.lons.copy(),
-            self.lats.copy(),
+            self.lons_c.copy(),
+            self.lats_c.copy(),
             remove_duplicate_points=remove_duplicate_points
         )
     
@@ -93,8 +93,8 @@ class Region:
         Checks if the section is clockwise and flips its direction if it is to make it counterclockwise.
         """
         if not(self.counterclockwise):
-            self.lons = self.lons[::-1]
-            self.lats = self.lats[::-1]
+            self.lons_c = self.lons_c[::-1]
+            self.lats_c = self.lats_c[::-1]
             self.counterclockwise = True
 
     def remove_duplicate_points(self, closeness_threshold=5.e3):
@@ -106,9 +106,9 @@ class Region:
         closeness_threshold : float
             A short distance within which points are deemed to be identical. Default: 5.e3.
         """
-        self.lons, self.lats = unique_lonlat(
-            self.lons,
-            self.lats,
+        self.lons_c, self.lats_c = unique_lonlat(
+            self.lons_c,
+            self.lats_c,
             closeness_threshold=closeness_threshold
         )
 
@@ -146,9 +146,9 @@ class GriddedRegion(Region):
         mask : None or xr.DataArray (default: None)
             If None, does not apply any mask.
         ij : None or list
-            If None, the indices of grid coordinates closest to provided coordinates `self.i` and `self.j`
+            If None, the indices of grid coordinates closest to provided coordinates `self.i_c` and `self.j_c`
             are inferred from the model grid. If list, assume two elements in the list and
-            extract `self.i = ij[0]` and `self.j = ij[1]`.
+            extract `self.i_c = ij[0]` and `self.j_c = ij[1]`.
 
         RETURNS
         -------
@@ -174,14 +174,14 @@ class GriddedRegion(Region):
             raise NameError("Must provide lons and lats as lists or arrays\
             to define the region.")
         else:
-            self.lons = lons
-            self.lats = lats
-            self.i = ij[0]
-            self.j = ij[1]
+            self.lons_c = lons
+            self.lats_c = lats
+            self.i_c = ij[0]
+            self.j_c = ij[1]
             if mask is None:
                 self.mask = mask_from_grid_boundaries(
-                    self.lons,
-                    self.lats,
+                    self.lons_c,
+                    self.lats_c,
                     self.grid,
                     along_boundary=True
                 )
@@ -190,8 +190,8 @@ class GriddedRegion(Region):
         
         super().__init__(
             name=name,
-            lons=self.lons,
-            lats=self.lats
+            lons=self.lons_c,
+            lats=self.lats_c
         )
         
     def initiate_from_boundary(
@@ -205,7 +205,7 @@ class GriddedRegion(Region):
         TO DO
         """
 
-        self.i, self.j, self.lons, self.lats, self.lons_uv, self.lats_uv = (
+        self.i_c, self.j_c, self.lons_c, self.lats_c, self.lons_uv, self.lats_uv = (
             get_region_boundary_grid_indices(
                 lons.copy(),
                 lats.copy(),
@@ -214,8 +214,8 @@ class GriddedRegion(Region):
         )
         if mask is None:
             mask = mask_from_grid_boundaries(
-                self.lons,
-                self.lats,
+                self.lons_c,
+                self.lats_c,
                 self.grid
             )
         self.mask = mask.astype(bool) ^ (not positive_in)
@@ -254,8 +254,8 @@ class GriddedRegion(Region):
             grid._ds.drop_vars([v for v in grid._ds.data_vars]).to_netcdf(grid_path)
 
         # Write boundary information to NetCDF file
-        vertex = xr.DataArray(np.arange(0, self.i.size), dims=('vertex',))
-        face = xr.DataArray(np.arange(0.5, self.i.size-1), dims=('face',))
+        vertex = xr.DataArray(np.arange(0, self.i_c.size), dims=('vertex',))
+        face = xr.DataArray(np.arange(0.5, self.i_c.size-1), dims=('face',))
         ds = xr.Dataset({}, coords={'vertex': vertex, 'face': face})
         for v in ['lons', 'lats', 'i', 'j']:
             var = getattr(self,v)
@@ -278,7 +278,7 @@ class GriddedRegion(Region):
             sec_path = f"{gr_path}/children/{child_name}.sec"
             Path(sec_path).mkdir(parents=True, exist_ok=True)
             
-            vertex = xr.DataArray(np.arange(0, child.i.size), dims=('vertex',))
+            vertex = xr.DataArray(np.arange(0, child.i_c.size), dims=('vertex',))
             ds = xr.Dataset({}, coords={'vertex': vertex})
             for k in ['lons', 'lats', 'i', 'j']:
                 var = getattr(child,k)
@@ -291,48 +291,84 @@ class BoundedRegion(GriddedRegion):
     def __init__(self, section, grid, **kwargs):
         super().__init__(
             section.name,
-            section.lons,
-            section.lats,
+            section.lons_c,
+            section.lats_c,
             grid,
             **kwargs
         )
         self.children = {}
 
-        def is_slice_in_list(s,l):
-            """Check if a list slice (ordered sublist) is contained in list"""
-            len_s = len(s) #so we don't recompute length of s on every iteration
-            return any(s == l[i:len_s+i] for i in range(len(l) - len_s+1))
+        def slice_indices_in_list(s, l):
+            """
+            Return a list of indices in `l` where elements of slice `s` appear in order.
+            Returns list of indices if found, else None.
+            """
+            len_s = len(s)
+            for i in range(len(l) - len_s + 1):
+                if s == l[i:i+len_s]:
+                    return np.array(list(range(i, i+len_s)), dtype=int)
+            return None
+
+        # Create the parent gridded section
+        parent_section_gridded = sec.GriddedSection(
+            sec.Section(
+                section.name,
+                (self.lons_c, self.lats_c),
+            ),
+            grid,
+            i_c = self.i_c,
+            j_c = self.j_c
+        )
+        parent_lons_uv, parent_lats_uv = sec.uvcoords_from_qindices(
+            grid,
+            parent_section_gridded.i_c,
+            parent_section_gridded.j_c
+        )
+        parent_coords_uv = sec.coords_from_lonlat(parent_lons_uv, parent_lats_uv)
             
         for child_name, child in section.children.items():
-            i, j, lons, lats = sec.grid_section(grid, child.lons, child.lats)
+            i_c, j_c, lons_c, lats_c = sec.grid_section(grid, child.lons_c, child.lats_c)
             
-            lonlat_parent = sec.coords_from_lonlat(loop(self.lons), loop(self.lats))
-            lonlat_child = sec.coords_from_lonlat(lons, lats)
-            if not(is_slice_in_list(lonlat_child, lonlat_parent)):
-                if is_slice_in_list(lonlat_child[::-1], lonlat_parent):
-                    child.lons = child.lons[::-1]
-                    child.lats = child.lats[::-1]
-                    i, j = i[::-1], j[::-1]
-                    lons, lats = lons[::-1], lats[::-1]
-                else:
-                    child.lons = child.lons[::-1]
-                    child.lats = child.lats[::-1]
-                    i, j, lons, lats = sec.grid_section(grid, child.lons, child.lats)
-                    lonlat_parent = sec.coords_from_lonlat(loop(self.lons), loop(self.lats))
-                    lonlat_child = sec.coords_from_lonlat(lons, lats)
-                    if not(is_slice_in_list(lonlat_child, lonlat_parent)):
-                        raise ValueError("Child sections do not match up with parent ones!")  
+            child_coords = sec.coords_from_lonlat(lons_c, lats_c)
 
-            coords = sec.coords_from_lonlat(lons, lats)
+            # Find the indices in the parent's corner sections that correspond this child
+            parent_idx_c = slice_indices_in_list(child_coords, parent_section_gridded.coords)
+            if parent_idx_c is not None:
+                pass  # child orientation matches parent
+            else:
+                parent_idx_c = slice_indices_in_list(child_coords[::-1], parent_section_gridded.coords)
+                if parent_idx_c is not None:
+                    # reversed slice is in the parent list
+                    child.lons_c = child.lons_c[::-1]
+                    child.lats_c = child.lats_c[::-1]
+                    # recompute the child sections using the correct orientation
+                    i_c, j_c, lons_c, lats_c = sec.grid_section(grid, child.lons_c, child.lats_c)
+                else:
+                    raise ValueError("Child corner sections do not match up with parent ones!")
+            
+            # Find the indices in the parent's velocity sections that correspond this child
+            lons_uv, lats_uv = sec.uvcoords_from_qindices(grid, i_c, j_c)
+            child_coords_uv = sec.coords_from_lonlat(lons_uv, lats_uv)
+            parent_idx_uv = slice_indices_in_list(child_coords_uv, parent_coords_uv)
+            if parent_idx_uv is None:
+                raise ValueError("Child velocity sections do not match up with parent ones!")
+
+            child_coords = sec.coords_from_lonlat(lons_c, lats_c)
             child_section = sec.Section(
                 child_name,
-                coords,
+                child_coords,
                 children={},
-                parents={}
+                parent=parent_section_gridded
             )
-            child_section.i = i
-            child_section.j = j
-            self.children[child_name] = child_section
+            child_section_gridded = sec.GriddedSection(
+                child_section,
+                grid,
+                i_c = i_c,
+                j_c = j_c,
+            )
+            child_section_gridded.parent_idx_c = parent_idx_c
+            child_section_gridded.parent_idx_uv = parent_idx_uv
+            self.children[child_name] = child_section_gridded
 
 def open_gr(path, ds_to_grid):
 
@@ -343,11 +379,11 @@ def open_gr(path, ds_to_grid):
     name = path.split('/')[-1][:-3].replace('_',' ')
     region = GriddedRegion(
         name,
-        ds.lons.values,
-        ds.lats.values,
+        ds.lons_c.values,
+        ds.lats_c.values,
         grid,
         mask = ds.mask,
-        ij = (ds.i.values, ds.j.values)
+        ij = (ds.i_c.values, ds.j_c.values)
     )
     gr_files = [
         f for f in os.listdir(f"{path}/")
@@ -369,7 +405,7 @@ def open_gr(path, ds_to_grid):
         
         section = sec.Section(
             child_name,
-            sec.coords_from_lonlat(ds.lons.values, ds.lats.values)
+            sec.coords_from_lonlat(ds.lons_c.values, ds.lats_c.values)
         )
         
         section.save = {}

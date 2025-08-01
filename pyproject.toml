@@ -18,7 +18,7 @@ dependencies = [
     "geopandas",
     "regionmask",
     "contourpy",
-    "sectionate @ git+https://github.com/MOM6-community/sectionate.git@master"
+    "sectionate @ git+https://github.com/hdrake/sectionate.git@master"
 ]
 
 [project.urls]
