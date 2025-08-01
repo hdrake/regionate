@@ -18,7 +18,7 @@ def grid_boundaries_from_mask(grid, mask):
     
     RETURNS
     -------
-    i_list, j_list, lons_list, lats_list
+    i_c_list, j_c_list, lons_c_list, lats_c_list
     """
     
     symmetric = check_symmetric(grid)
@@ -31,33 +31,33 @@ def grid_boundaries_from_mask(grid, mask):
         )
         .create_contour(0.5)
     )
-    i_list = []
-    j_list = []
-    lons_list = []
-    lats_list = []
+    i_c_list = []
+    j_c_list = []
+    lons_c_list = []
+    lats_c_list = []
     for c in contours:
-        i, j = c[:-1,0], c[:-1,1]
+        i_c, j_c = c[:-1,0], c[:-1,1]
         
-        i_new, j_new = i.copy(), j.copy()
+        i_c_new, j_c_new = i_c.copy(), j_c.copy()
         
-        i_inc = np.roll(i, -1)-i
-        j_inc = np.roll(j, -1)-j
+        i_inc = np.roll(i_c, -1)-i_c
+        j_inc = np.roll(j_c, -1)-j_c
         
-        i_new[(i%1)==0.0] = (i - (i_inc<0))[(i%1)==0.0] + symmetric
-        j_new[(j%1)==0.0] = (j - (j_inc<0))[(j%1)==0.0] + symmetric
-        i_new[(i%1)==0.5] = np.floor(i[(i%1)==0.5]) + symmetric
-        j_new[(j%1)==0.5] = np.floor(j[(j%1)==0.5]) + symmetric
+        i_c_new[(i_c%1)==0.0] = (i_c - (i_inc<0))[(i_c%1)==0.0] + symmetric
+        j_c_new[(j_c%1)==0.0] = (j_c - (j_inc<0))[(j_c%1)==0.0] + symmetric
+        i_c_new[(i_c%1)==0.5] = np.floor(i_c[(i_c%1)==0.5]) + symmetric
+        j_c_new[(j_c%1)==0.5] = np.floor(j_c[(j_c%1)==0.5]) + symmetric
         
-        i_new, j_new = loop(i_new).astype(np.int64), loop(j_new).astype(np.int64)
+        i_c_new, j_c_new = loop(i_c_new).astype(np.int64), loop(j_c_new).astype(np.int64)
                         
-        i_list.append(i_new)
-        j_list.append(j_new)
+        i_c_list.append(i_c_new)
+        j_c_list.append(j_c_new)
         
         idx = {
-            "xq":xr.DataArray(i_new, dims=("pt",)),
-            "yq":xr.DataArray(j_new, dims=("pt",))
+            "xq":xr.DataArray(i_c_new, dims=("pt",)),
+            "yq":xr.DataArray(j_c_new, dims=("pt",))
         }
-        lons_list.append(grid._ds["geolon_c"].isel(idx).values[:-1])
-        lats_list.append(grid._ds["geolat_c"].isel(idx).values[:-1])
+        lons_c_list.append(grid._ds["geolon_c"].isel(idx).values[:-1])
+        lats_c_list.append(grid._ds["geolat_c"].isel(idx).values[:-1])
         
-    return i_list, j_list, lons_list, lats_list
+    return i_c_list, j_c_list, lons_c_list, lats_c_list

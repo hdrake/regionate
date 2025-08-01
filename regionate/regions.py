@@ -164,7 +164,7 @@ class MaskRegions(GriddedRegions):
         self.grid = grid
         self.mask = mask
         
-        i_list, j_list, lons_list, lats_list = grid_boundaries_from_mask(
+        i_c_list, j_c_list, lons_c_list, lats_c_list = grid_boundaries_from_mask(
             self.grid,
             mask
         )
@@ -172,14 +172,14 @@ class MaskRegions(GriddedRegions):
         region_dict = {
             r_num: GriddedRegion(
                 str(r_num),
-                lons,
-                lats,
+                lons_c,
+                lats_c,
                 self.grid,
                 mask=mask,
-                ij=(i,j)
+                ij=(i_c,j_c)
             )
-            for r_num, (i, j, lons, lats)
-            in enumerate(zip(i_list, j_list, lons_list, lats_list))
+            for r_num, (i_c, j_c, lons_c, lats_c)
+            in enumerate(zip(i_c_list, j_c_list, lons_c_list, lats_c_list))
         }
         super().__init__(region_dict, grid, name=name)
 

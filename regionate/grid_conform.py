@@ -18,10 +18,10 @@ def get_region_boundary_grid_indices(lons, lats, grid):
     
     RETURNS
     -------
-    (i, j, lons_c, lats_c, lons_uv, lats_uv)
+    (i_c, j_c, lons_c, lats_c, lons_uv, lats_uv)
 
-    i : "X"-axis grid indices of corner points
-    j : "Y"-axis grid indices of corner points
+    i_c : "X"-axis grid indices of corner points
+    j_c : "Y"-axis grid indices of corner points
     lons_c : longitudes of corner points
     lats_c : latitudes of corner points
     lons_uv : longitudes of (u,v) velocity faces
@@ -30,21 +30,21 @@ def get_region_boundary_grid_indices(lons, lats, grid):
     if (lons[0], lats[0]) != (lons[-1], lats[-1]):
         lons, lats = loop(lons), loop(lats)
         
-    i, j, lons_c, lats_c = sec.grid_section(
+    i_c, j_c, lons_c, lats_c = sec.grid_section(
         grid,
         lons,
         lats,
         topology="MOM-tripolar"
     )
     
-    uvindices = sec.uvindices_from_qindices(grid, i, j)
+    uvindices = sec.uvindices_from_qindices(grid, i_c, j_c)
     
     lons_uv, lats_uv = sec.uvcoords_from_uvindices(
         grid,
         uvindices
     )
 
-    return (i, j, lons_c[:-1], lats_c[:-1], lons_uv, lats_uv)
+    return (i_c, j_c, lons_c[:-1], lats_c[:-1], lons_uv, lats_uv)
 
 def mask_from_grid_boundaries(
     lons_c,
