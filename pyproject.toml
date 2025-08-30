@@ -18,7 +18,7 @@ dependencies = [
     "geopandas",
     "regionmask",
     "contourpy",
-    "sectionate @ git+https://github.com/hdrake/sectionate.git@master"
+    "sectionate > 0.3.0"
 ]
 
 [project.urls]
@@ -35,3 +35,6 @@ allow-direct-references = true
 
 [tool.hatch.version]
 path = "regionate/version.py"
+
+[tool.hatch.build]
+exclude = ["examples/**", "data/**"]
