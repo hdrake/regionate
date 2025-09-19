@@ -7,7 +7,7 @@ Quick Start Guide
 
 **For users: minimal installation within an existing environment**
 ```bash
-pip install git+https://github.com/hdrake/regionate.git@main
+pip install regionate
 ```
 
 **For developers: installing from scratch using `conda`**
