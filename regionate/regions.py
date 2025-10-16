@@ -161,6 +161,9 @@ class MaskRegions(GriddedRegions):
         `GriddedRegions` instance
         """
         
+        if any([c not in grid._ds.coords for c in ["geolon_c", "geolat_c"]]):
+            raise ValueError("grid._ds must contain coordinates of grid cell corners, named 'geolon_c' and 'geolat_c'.")
+
         self.grid = grid
         self.mask = mask
         

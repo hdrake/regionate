@@ -2,7 +2,7 @@ import numpy as np
 from .utilities import *
 
 def find_indices_of_overlaps(r1, r2, closeness_threshold=5.e3, face_indices=False):
-    overlaps = haversine(
+    overlaps = distance_on_unit_sphere(
             r1.lons_c[:, np.newaxis], r1.lats_c[:, np.newaxis],
             r2.lons_c[np.newaxis, :], r2.lats_c[np.newaxis, :]
         ) < closeness_threshold
@@ -22,7 +22,7 @@ def group_overlaps(overlaps, r1, r2, closeness_threshold=5.e3):
     for o2 in overlaps[r2.name]:
         for o1 in overlaps[r1.name]:
             if np.any(o1) and np.any(o2):
-                if np.any(haversine(
+                if np.any(distance_on_unit_sphere(
                         r1.lons_c[o1, np.newaxis], r1.lats_c[o1, np.newaxis],
                         r2.lons_c[np.newaxis, o2], r2.lats_c[np.newaxis, o2]
                     ) < closeness_threshold):

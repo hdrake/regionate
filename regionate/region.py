@@ -160,6 +160,10 @@ class GriddedRegion(Region):
         >>> lons, lats = np.array([-80., -66., -65.]), np.array([ 26.,  18.,  32.])
         >>> region = reg.Region('Bermuda Triangle', lons, lats, grid)
         """
+
+        if any([c not in grid._ds.coords for c in ["geolon_c", "geolat_c"]]):
+            raise ValueError("grid._ds must contain coordinates of grid cell corners, named 'geolon_c' and 'geolat_c'.")
+
         self.grid = grid
         self.save = {}
         

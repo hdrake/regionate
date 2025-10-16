@@ -54,8 +54,8 @@ def grid_boundaries_from_mask(grid, mask):
         j_c_list.append(j_c_new)
         
         idx = {
-            "xq":xr.DataArray(i_c_new, dims=("pt",)),
-            "yq":xr.DataArray(j_c_new, dims=("pt",))
+            grid.axes["X"].coords["outer"]:xr.DataArray(i_c_new, dims=("pt",)),
+            grid.axes["Y"].coords["outer"]:xr.DataArray(j_c_new, dims=("pt",))
         }
         lons_c_list.append(grid._ds["geolon_c"].isel(idx).values[:-1])
         lats_c_list.append(grid._ds["geolat_c"].isel(idx).values[:-1])
