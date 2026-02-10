@@ -6,7 +6,7 @@ authors = [
 ]
 description = "A package for creating xgcm-grid consistent regional masks and boundaries"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
