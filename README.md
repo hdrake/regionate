@@ -12,7 +12,7 @@ Quick Start Guide
 
 **For users: minimal installation within an existing environment**
 ```bash
-conda install regionate
+conda install -c conda-forge regionate
 ```
 
 **For developers: installing from scratch using `conda`**
