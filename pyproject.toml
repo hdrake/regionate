@@ -15,9 +15,16 @@ classifiers = [
 dependencies = [
     "pyproj",
     "geopandas",
+    "shapely",
+    "xgcm >= 0.9.0",
     "regionmask",
     "contourpy",
-    "sectionate >= 0.3.3"
+    # Requires the topology-driven sectionate API (face_connections- and
+    # fold-aware neighbour finding) from MOM6-community/sectionate#47. Until that
+    # is released to PyPI, CI installs sectionate from the PR ref (see
+    # .github/workflows/ci.yml). That branch self-reports version 0.3.3, so the
+    # floor stays at 0.3.3 rather than a higher, currently-unsatisfiable pin.
+    "sectionate >= 0.3.3",
 ]
 
 [project.urls]

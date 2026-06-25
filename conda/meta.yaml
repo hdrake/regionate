@@ -24,8 +24,12 @@ requirements:
     - python >={{ python_min }}
     - pyproj
     - geopandas
+    - shapely
+    - xgcm >=0.9.0
     - regionmask
     - contourpy
+    # Needs the topology-driven sectionate API (MOM6-community/sectionate#47);
+    # the PR branch self-reports 0.3.3, so the floor stays there until release.
     - sectionate >=0.3.3
 
 test:
