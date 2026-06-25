@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`regionate` builds **xgcm-grid-consistent** regional masks and boundaries for ocean/climate model output (primarily MOM6). Given a geographic polygon, it snaps the polygon to a discrete model grid, producing a boolean cell mask plus the staggered (u,v) velocity faces that trace the region's boundary — so that volume/mass/heat budgets integrated over the masked region are exactly consistent with fluxes through the boundary faces. It leans heavily on its sibling package [`sectionate`](https://github.com/MOM6-community/sectionate) for the section/face-tracing math.
+`regionate` builds **xgcm-grid-consistent** regional masks and boundaries for ocean/climate model output (currently mostly MOM6, but with plans to support any ocean model). Given a geographic polygon, it snaps the polygon to a discrete model grid, producing a boolean cell mask plus the staggered (u,v) velocity faces that trace the region's boundary — so that volume/mass/heat budgets integrated over the masked region are exactly consistent with fluxes through the boundary faces. It leans heavily on its sibling package [`sectionate`](https://github.com/MOM6-community/sectionate) for the section/face-tracing math.
 
 ## Commands
 
