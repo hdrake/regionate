@@ -72,6 +72,48 @@ def get_geo_centers(grid):
     return geo
 
 
+def _pole_enclosing_polygon(lons_c, lats_c, delta_lon):
+    """Extend a pole-encircling boundary down to the South Pole, forming a closed
+    polygon that encloses everything south of the boundary.
+
+    The boundary winding is first normalized to eastward (sectionate's
+    stereographic-plane orientation convention relative to the South Pole), then
+    rolled to be single-valued in longitude, then closed off with two points at
+    latitude -90. Both windings of the same boundary therefore enclose the same
+    region.
+    """
+    s = np.sign(delta_lon).astype(int)
+    if s == -1:
+        lons_c = lons_c[::-1]
+        lats_c = lats_c[::-1]
+        s = 1
+
+    min_idx = np.argmin(lons_c)
+    lons = np.roll(lons_c, -min_idx)
+    lats = np.roll(lats_c, -min_idx)
+
+    lons = np.append(lon_mod(lons[-1], lons[0]), lons)
+    lats = np.append(lats[-1], lats)
+
+    diffs = s * (lons[np.newaxis, :] - lons[:, np.newaxis])
+    diffs[np.tril_indices(lons.size)] *= -1
+    single_valued = ~np.any(diffs < 0, axis=1)
+
+    roll_idx = np.argmax(single_valued[::s])
+    lons = np.roll(lons[::s], -roll_idx)[::s]
+    lats = np.roll(lats[::s], -roll_idx)[::s]
+
+    min_idx = np.argmin(lons)
+    max_idx = np.argmax(lons)
+    lons = np.append(
+        lons, [lons[max_idx] + 10, lons[max_idx] + 10,
+               lons[min_idx] - 10, lons[min_idx] - 10]
+    )
+    lats = np.append(lats, [lats[max_idx], -90, -90, lats[min_idx]])
+
+    return Polygon(zip(lons, lats))
+
+
 def get_region_boundary_grid_indices(lons, lats, grid):
     """Find boundary coordinates and grid indices that approximate a polygon.
 
@@ -136,11 +178,23 @@ def mask_from_grid_boundaries(
     center_lon = normalize_lon(geo["X"])
     center_lat = geo["Y"]
 
-    # Build a polygon from the (normalized) corner coordinates and split it at
-    # the antimeridian into clean [-180, 180] pieces.
-    lons_n = normalize_lon(np.asarray(lons_c, dtype=float))
-    lats_n = np.asarray(lats_c, dtype=float)
-    polygon = Polygon(zip(lons_n, lats_n))
+    lons_c = np.asarray(lons_c, dtype=float)
+    lats_c = np.asarray(lats_c, dtype=float)
+
+    # Total signed longitude winding along the boundary, ignoring antimeridian
+    # jumps. A magnitude near 360 means the boundary encircles a pole and cannot
+    # be drawn as a simple lon/lat polygon; we then extend it to the South Pole
+    # (sectionate's stereographic-plane orientation convention) so the polygon
+    # encloses everything on the boundary's enclosed side.
+    dlon = np.diff(lons_c)
+    delta_lon = np.sum(dlon[np.abs(dlon) < 180.])
+
+    if (not along_boundary) and (np.abs(delta_lon) >= 180.):
+        polygon = _pole_enclosing_polygon(lons_c, lats_c, delta_lon)
+    else:
+        polygon = Polygon(zip(normalize_lon(lons_c), lats_c))
+
+    # Split at the ±180 antimeridian into clean [-180, 180] pieces.
     split = split_at_antimeridian(polygon)
 
     if split.geom_type == "Polygon":
