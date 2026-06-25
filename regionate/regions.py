@@ -5,6 +5,7 @@ from .region import Region, GriddedRegion, BoundedRegion, open_gr
 from .boundaries import grid_boundaries_from_mask
 from .overlaps import *
 from .utilities import *
+from sectionate.gridutils import get_geo_corners
 
 import os
 from pathlib import Path
@@ -161,13 +162,18 @@ class MaskRegions(GriddedRegions):
         `GriddedRegions` instance
         """
         
-        if any([c not in grid._ds.coords for c in ["geolon_c", "geolat_c"]]):
-            raise ValueError("grid._ds must contain coordinates of grid cell corners, named 'geolon_c' and 'geolat_c'.")
+        try:
+            get_geo_corners(grid)
+        except ValueError as e:
+            raise ValueError(
+                "grid._ds must contain two-dimensional cell-corner (vorticity) "
+                'coordinates whose names contain "lon" and "lat".'
+            ) from e
 
         self.grid = grid
         self.mask = mask
-        
-        i_c_list, j_c_list, lons_c_list, lats_c_list = grid_boundaries_from_mask(
+
+        i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list = grid_boundaries_from_mask(
             self.grid,
             mask
         )
@@ -179,10 +185,10 @@ class MaskRegions(GriddedRegions):
                 lats_c,
                 self.grid,
                 mask=mask,
-                ij=(i_c,j_c)
+                ij=(i_c, j_c, f_c)
             )
-            for r_num, (i_c, j_c, lons_c, lats_c)
-            in enumerate(zip(i_c_list, j_c_list, lons_c_list, lats_c_list))
+            for r_num, (i_c, j_c, f_c, lons_c, lats_c)
+            in enumerate(zip(i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list))
         }
         super().__init__(region_dict, grid, name=name)
 
