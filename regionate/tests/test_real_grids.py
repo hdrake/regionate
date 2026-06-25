@@ -16,7 +16,8 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
 MOM6_FILE = os.path.join(
     DATA_DIR, "MOM6_global_example_vertically_integrated_mass_budget_v0_0_6.nc"
 )
-ECCO_FILE = os.environ.get("REGIONATE_ECCO_GRID", "")
+ECCO_FILE = os.path.join(DATA_DIR, "GRID_GEOMETRY_ECCO_V4r4_native_llc0090.nc")
+EXAMPLES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "examples")
 
 
 @pytest.mark.skipif(
@@ -52,24 +53,24 @@ def test_mom6_global_box_mask_boundary_consistency():
 
 
 @pytest.mark.skipif(
-    not (REALDATA and os.path.isfile(ECCO_FILE)),
-    reason="set REGIONATE_REALDATA_TESTS=1 and REGIONATE_ECCO_GRID=<llc90 grid .nc>",
+    not os.path.isfile(ECCO_FILE),
+    reason="ECCO LLC90 geometry not downloaded (see examples/load_example_ECCO_grid.py)",
 )
-def test_ecco_llc_reciprocal_or_raises():
-    """ECCOv4r4 LLC90 neighbour construction must either be fully reciprocal
-    (a usable topology) or refuse with NotImplementedError -- never silently
-    inconsistent. Canonical LLC90 (all-non-reversed seams) is reciprocal; only
-    the full cubed-sphere's reversed/rotated cap connections may raise."""
-    import xgcm
-    from sectionate.gridutils import build_neighbor_maps, get_geo_corners
+def test_ecco_llc90_seam_region_stitches_across_tiles():
+    """On the real ECCOv4r4 lat-lon-cap (LLC90) grid, a contiguous region that
+    straddles the tile-1/tile-2 seam is traced as a single boundary loop whose
+    per-corner face index spans both tiles. Exercises `sectionate.symmetrize`
+    (native MITgcm 'left' -> symmetric) plus regionate's multi-tile stitching."""
+    import sys
+    sys.path.insert(0, os.path.abspath(EXAMPLES_DIR))
+    from load_example_ECCO_grid import load_ECCO_LLC90_grid
+    from regionate import MaskRegions
 
-    ds = xr.open_dataset(ECCO_FILE)
-    # The caller's file is expected to be directly consumable by xgcm.Grid with
-    # face_connections; we only assert the reciprocity invariant here.
-    grid = xgcm.Grid(ds, periodic=False, autoparse_metadata=False)
-    try:
-        maps = build_neighbor_maps(grid, get_geo_corners(grid))
-    except NotImplementedError:
-        return
-    # If it did not raise, a representative seam must be self-consistent.
-    assert all(m is not None for m in next(iter(maps.values())))
+    grid = load_ECCO_LLC90_grid(data_dir=os.path.abspath(DATA_DIR))
+    lon, lat = grid._ds["geolon"], grid._ds["geolat"]
+    mask = ((lon > -30) & (lon < 20) & (lat > -5) & (lat < 25)).compute()
+
+    regions = MaskRegions(mask, grid).region_dict
+    assert len(regions) == 1
+    region = regions[0]
+    assert set(np.asarray(region.f_c).tolist()) == {1, 2}   # boundary spans both tiles
