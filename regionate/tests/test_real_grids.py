@@ -74,3 +74,23 @@ def test_ecco_llc90_seam_region_stitches_across_tiles():
     assert len(regions) == 1
     region = regions[0]
     assert set(np.asarray(region.f_c).tolist()) == {1, 2}   # boundary spans both tiles
+
+
+def test_ecco_llc90_stitches_across_rotated_seam():
+    """A mid-Atlantic strip crosses the rotated tile-2/tile-10 (X->Y) seam, where
+    the two tiles' symmetric corners are offset and do not coincide in lon/lat.
+    It must still stitch into one connected loop spanning all four tiles, via the
+    topology (neighbour-map) join rather than coordinate coincidence."""
+    import sys
+    sys.path.insert(0, os.path.abspath(EXAMPLES_DIR))
+    from load_example_ECCO_grid import load_ECCO_LLC90_grid
+    from regionate import MaskRegions
+
+    grid = load_ECCO_LLC90_grid(data_dir=os.path.abspath(DATA_DIR))
+    lon, lat, depth = grid._ds["geolon"], grid._ds["geolat"], grid._ds["Depth"]
+    strip = ((depth > 0) & (lon > -42) & (lon < -34) & (lat > 0) & (lat < 40)).compute()
+
+    regions = MaskRegions(strip, grid).region_dict
+    biggest = max(regions.values(), key=lambda r: len(r.lons_c))
+    faces = set(np.asarray(biggest.f_c).tolist())
+    assert faces == {1, 2, 10, 11}    # one boundary stitched across the rotated seam

@@ -8,6 +8,7 @@ from sectionate.gridutils import (
     get_geo_corners,
     coord_dict,
     check_symmetric,
+    build_neighbor_maps,
 )
 from sectionate.section import distance_on_unit_sphere, COINCIDENT_TOLERANCE_M
 
@@ -171,35 +172,60 @@ def _multitile_boundaries_from_mask(grid, mask):
             end = corner(f, base_i + edi, base_j + edj)
             edges.append((start, end))
 
-    return _stitch_edges_into_loops(edges)
+    # Topology-aware corner adjacency (handles rotated/reversed tile seams, where
+    # the two tiles' corners are offset and do not coincide in lon/lat).
+    maps = build_neighbor_maps(grid, geo)
+
+    def neighbor_corners(f, ci, cj):
+        nbrs = set()
+        for d in maps:
+            fmap, jmap, imap = maps[d]
+            nf_ = int(fmap[f, cj, ci]) if fmap is not None else f
+            nbrs.add((nf_, int(imap[f, cj, ci]), int(jmap[f, cj, ci])))
+        return nbrs
+
+    return _stitch_edges_into_loops(edges, neighbor_corners)
 
 
-def _stitch_edges_into_loops(edges):
-    """Stitch directed corner edges into ordered closed boundary loops, matching
-    edge endpoints by physical coincidence so that loops join across tile seams."""
+def _stitch_edges_into_loops(edges, neighbor_corners=None):
+    """Stitch directed corner edges into ordered closed boundary loops.
+
+    The end corner of each edge is matched to the start corner of the next edge
+    in three escalating ways: (1) the exact same grid corner (within a tile);
+    (2) a physically coincident corner (a shared seam corner of a non-rotated
+    tile connection); and (3) a grid-adjacent corner via the topology neighbour
+    maps (a rotated/reversed seam crossing, where the two tiles' corners are
+    offset by a cell and never coincide in lon/lat). `neighbor_corners(f, i, j)`
+    returns the set of grid-neighbour corners of a corner; pass it for multi-tile
+    grids."""
     if not edges:
         return [], [], [], [], []
 
-    # Cluster all endpoints into nodes by physical coincidence on the sphere.
-    node_pts = []  # representative (lon, lat) per node
-
-    def node_id(lon, lat):
-        for k, (L, B) in enumerate(node_pts):
-            if distance_on_unit_sphere(lon, lat, L, B) < COINCIDENT_TOLERANCE_M:
-                return k
-        node_pts.append((lon, lat))
-        return len(node_pts) - 1
-
-    # out_edges[start_node] -> list of edge indices that start there
-    out_edges = {}
-    edge_nodes = []  # (start_node, end_node) per edge
+    # Index edges by their exact start corner (face, i, j).
+    start_by_corner = {}
     for k, (s, e) in enumerate(edges):
-        sn = node_id(s[3], s[4])
-        en = node_id(e[3], e[4])
-        edge_nodes.append((sn, en))
-        out_edges.setdefault(sn, []).append(k)
+        start_by_corner.setdefault((s[0], s[1], s[2]), []).append(k)
 
     used = [False] * len(edges)
+
+    def find_next(end):
+        # 1. an edge starting at the exact same corner (interior of a tile)
+        for k in start_by_corner.get((end[0], end[1], end[2]), []):
+            if not used[k]:
+                return k
+        # 2. an edge starting at a physically coincident corner (non-rotated seam)
+        for k, (s, _e) in enumerate(edges):
+            if (not used[k] and
+                    distance_on_unit_sphere(end[3], end[4], s[3], s[4]) < COINCIDENT_TOLERANCE_M):
+                return k
+        # 3. an edge starting at a grid-adjacent corner (rotated/reversed seam)
+        if neighbor_corners is not None:
+            for nb in neighbor_corners(end[0], end[1], end[2]):
+                for k in start_by_corner.get(nb, []):
+                    if not used[k]:
+                        return k
+        return None
+
     i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list = [], [], [], [], []
 
     for start_k in range(len(edges)):
@@ -211,9 +237,7 @@ def _stitch_edges_into_loops(edges):
         while k is not None and not used[k]:
             used[k] = True
             loop_edges.append(k)
-            _, en = edge_nodes[k]
-            # next edge = an unused edge starting at this end node
-            k = next((c for c in out_edges.get(en, []) if not used[c]), None)
+            k = find_next(edges[k][1])
 
         seq = _loop_corner_sequence([edges[k] for k in loop_edges])
         i_c = np.array([c[1] for c in seq], dtype=np.int64)
