@@ -7,8 +7,56 @@ import xgcm
 import pytest
 
 import sectionate as sec
+from sectionate.gridutils import symmetrize
 from regionate.boundaries import grid_boundaries_from_mask
 from regionate import MaskRegions
+
+
+def rotated_two_tile_grid(Nc=4):
+    """A symmetrized 2-tile grid whose tiles meet at a ROTATED seam: face 0's
+    +X edge connects to face 1's Y axis (an X->Y, 90-degree connection). Each
+    tile is given its own disjoint coordinate block (face 1 offset by +100), so
+    the seam's two corner representations never coincide in lon/lat -- a region
+    spanning the seam can therefore only be stitched via the grid topology
+    (`build_neighbor_maps`), not coordinate coincidence. Built natively on the
+    MITgcm 'left' corner and converted with `sectionate.gridutils.symmetrize`."""
+    ng = Nc  # native 'left' corners are the same size as centers
+    LONc = np.zeros((2, ng, ng)); LATc = np.zeros((2, ng, ng))
+    LON = np.zeros((2, Nc, Nc));  LAT = np.zeros((2, Nc, Nc))
+    for f in range(2):
+        off = 100 * f
+        LONc[f] = off + np.arange(ng)[None, :]
+        LATc[f] = off + np.arange(ng)[:, None]
+        LON[f] = off + np.arange(Nc)[None, :] + 0.5
+        LAT[f] = off + np.arange(Nc)[:, None] + 0.5
+    ds = xr.Dataset(coords={
+        "i": ("i", np.arange(Nc)), "j": ("j", np.arange(Nc)),
+        "i_g": ("i_g", np.arange(ng)), "j_g": ("j_g", np.arange(ng)),
+        "face": ("face", [0, 1]),
+        "geolon": (("face", "j", "i"), LON), "geolat": (("face", "j", "i"), LAT),
+        "geolon_c": (("face", "j_g", "i_g"), LONc),
+        "geolat_c": (("face", "j_g", "i_g"), LATc),
+    })
+    fc = {"face": {0: {"X": (None, (1, "Y", False))},
+                   1: {"Y": ((0, "X", False), None)}}}
+    grid_left = xgcm.Grid(
+        ds, coords={"X": {"center": "i", "left": "i_g"},
+                    "Y": {"center": "j", "left": "j_g"}},
+        boundary="fill", fill_value=np.nan,
+        face_connections=fc, autoparse_metadata=False,
+    )
+    return symmetrize(grid_left, face_connections=fc)
+
+
+def test_rotated_seam_region_stitches_into_one_loop():
+    grid = rotated_two_tile_grid(Nc=4)
+    # Both tiles fully in-mask: the rotated seam between them is internal, and
+    # the region's outer boundary must be a single loop spanning both faces --
+    # stitched across the rotated seam by topology alone (coords don't coincide).
+    mask = xr.ones_like(grid._ds["geolon"]).astype(bool)
+    i_l, j_l, f_l, lon_l, lat_l = grid_boundaries_from_mask(grid, mask)
+    assert len(i_l) == 1
+    assert set(np.asarray(f_l[0]).tolist()) == {0, 1}
 
 
 def two_face_grid(Nc=3):
