@@ -109,7 +109,12 @@ def test_boundary_obeys_discrete_divergence_theorem():
     for any flux field, the net flux through the boundary's velocity faces equals
     the flux convergence summed over the masked cells. This is the property that
     makes regionate budgets consistent. Uses a region spanning the (non-rotated)
-    tile seam and a seam-consistent synthetic transport field."""
+    tile seam and a seam-consistent synthetic transport field.
+
+    (This synthetic grid is symmetric 'outer', so the shared seam U-face is stored
+    on BOTH tiles and must be made single-valued by hand; on a native 'left' grid --
+    e.g. real ECCO -- the seam face is stored once and any transport field works, as
+    ``test_ecco_atlantic_basin_obeys_discrete_divergence_theorem`` checks.)"""
     grid = two_face_grid(Nc=6)
     Nc = grid._ds.sizes["xh"]; ng = Nc + 1
     # synthetic face transports; the shared seam U-face (face0 xq=Nc == face1 xq=0)
@@ -119,7 +124,6 @@ def test_boundary_obeys_discrete_divergence_theorem():
     umo = xr.DataArray(umo, dims=("face", "yh", "xq"))
     vmo = xr.DataArray(np.cos(np.arange(2 * ng * Nc).reshape(2, ng, Nc) * 0.05) - 0.2,
                        dims=("face", "yq", "xh"))
-    grid._ds["umo"] = umo; grid._ds["vmo"] = vmo
 
     mask = make_mask(grid, {0: [(j, i) for j in range(1, 5) for i in range(3, Nc)],
                             1: [(j, i) for j in range(1, 5) for i in range(0, 3)]})

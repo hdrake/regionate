@@ -25,11 +25,14 @@ requirements:
     - pyproj
     - geopandas
     - shapely
+    # Multi-tile (lat-lon-cap / cap) padding needs the face_connections
+    # halo-padding fix (hdrake/xgcm@fix-faceconnection-pad-712); floor stays 0.9.0.
     - xgcm >=0.9.0
     - regionmask
     - contourpy
-    # Needs the topology-driven sectionate API (MOM6-community/sectionate#47);
-    # the PR branch self-reports 0.3.3, so the floor stays there until release.
+    # Needs the topology-driven sectionate API + 'left'/rotated-seam corner-neighbour
+    # fix (MOM6-community/sectionate#47); the PR branch self-reports 0.3.3, so the
+    # floor stays there until release.
     - sectionate >=0.3.3
 
 test:

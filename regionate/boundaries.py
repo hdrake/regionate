@@ -1,6 +1,7 @@
 import contourpy
 import numpy as np
 import xarray as xr
+from xgcm.padding import pad
 
 from .utilities import loop
 from sectionate.gridutils import (
@@ -95,11 +96,7 @@ def _pad_center(grid, da):
     filled with NaN. Mirrors `sectionate.gridutils.build_neighbor_maps`."""
     boundary = {ax: grid.axes[ax].boundary for ax in grid.axes}
     boundary_width = {ax: (1, 1) for ax in grid.axes}
-    if hasattr(grid, "pad"):
-        return grid.pad(da, boundary_width=boundary_width, boundary=boundary,
-                        fill_value=np.nan)
-    from xgcm.padding import pad as _module_pad
-    return _module_pad(da, grid, boundary_width, boundary=boundary, fill_value=np.nan)
+    return pad(da, grid, boundary_width, boundary=boundary, fill_value=np.nan)
 
 
 # Cells separated by a directed corner segment (ig,jg)->(ig+di,jg+dj), in the

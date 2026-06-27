@@ -99,3 +99,42 @@ def test_ecco_atlantic_basin_boundary_and_transports():
     lons_uv, lats_uv = sec.uvcoords_from_qindices(
         grid, basin.i_c, basin.j_c, f_c=basin.f_c)
     assert len(lons_uv) > 0
+
+
+def test_ecco_atlantic_basin_obeys_discrete_divergence_theorem():
+    """The whole point of the package: a region's budget must close against the
+    fluxes through its traced boundary. On the real LLC90 grid, for the full
+    Atlantic basin (spanning rotated seams), the net flux through every boundary
+    velocity face (summed over all loops) equals the flux convergence summed over
+    the masked cells -- to machine precision, for an arbitrary transport field.
+
+    The cell-centred convergence is taken with xgcm's vector-aware
+    ``grid.diff_2d_vector``: across a 90-degree LLC seam the U-component rotates into
+    the neighbour's V-component, so differencing the components as independent scalars
+    would be wrong there (this is expected xgcm behaviour, not a bug -- see xgcm's
+    vector-padding API)."""
+    import sectionate as sec
+    from regionate import MaskRegions
+    grid, atlantic_basin_mask = _load_ecco()
+    mask = atlantic_basin_mask(grid)
+
+    nf, ny, nx = (grid._ds.sizes[d] for d in ("tile", "j", "i"))
+    g = np.arange(nf * ny * nx, dtype=float).reshape(nf, ny, nx)
+    umo = xr.DataArray(np.sin(g * 0.013) + 0.3, dims=("tile", "j", "i_g"))
+    vmo = xr.DataArray(np.cos(g * 0.017) - 0.2, dims=("tile", "j_g", "i"))
+
+    div = grid.diff_2d_vector({"X": umo, "Y": vmo}, to="center",
+                              boundary="fill", fill_value=np.nan)
+    convergence = float((-(div["X"] + div["Y"])).where(mask, 0.).sum())
+
+    U, V = umo.transpose("tile", ...).values, vmo.transpose("tile", ...).values
+    flux = 0.0
+    for r in MaskRegions(mask, grid).region_dict.values():
+        uv = sec.uvindices_from_qindices(grid, r.i_c, r.j_c, f_c=r.f_c)
+        for k in range(len(uv["var"])):
+            if uv["var"][k] == "0":
+                continue
+            f, i, j = int(uv["face"][k]), int(uv["i"][k]), int(uv["j"][k])
+            flux += int(uv["Lsign"][k]) * (U[f, j, i] if uv["var"][k] == "U" else V[f, j, i])
+
+    assert np.isclose(convergence, flux, atol=1e-9)
