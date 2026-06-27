@@ -104,6 +104,40 @@ def make_mask(grid, cells):
     return xr.DataArray(arr, dims=grid._ds.geolon.dims, coords=grid._ds.geolon.coords)
 
 
+def test_boundary_obeys_discrete_divergence_theorem():
+    """A traced multi-tile boundary must obey the discrete divergence theorem:
+    for any flux field, the net flux through the boundary's velocity faces equals
+    the flux convergence summed over the masked cells. This is the property that
+    makes regionate budgets consistent. Uses a region spanning the (non-rotated)
+    tile seam and a seam-consistent synthetic transport field."""
+    grid = two_face_grid(Nc=6)
+    Nc = grid._ds.sizes["xh"]; ng = Nc + 1
+    # synthetic face transports; the shared seam U-face (face0 xq=Nc == face1 xq=0)
+    # must be single-valued for the flux field to be physically consistent.
+    umo = np.sin(np.arange(2 * Nc * ng).reshape(2, Nc, ng) * 0.07) + 0.3
+    umo[1, :, 0] = umo[0, :, Nc]
+    umo = xr.DataArray(umo, dims=("face", "yh", "xq"))
+    vmo = xr.DataArray(np.cos(np.arange(2 * ng * Nc).reshape(2, ng, Nc) * 0.05) - 0.2,
+                       dims=("face", "yq", "xh"))
+    grid._ds["umo"] = umo; grid._ds["vmo"] = vmo
+
+    mask = make_mask(grid, {0: [(j, i) for j in range(1, 5) for i in range(3, Nc)],
+                            1: [(j, i) for j in range(1, 5) for i in range(0, 3)]})
+    convergence = float((-(grid.diff(umo, "X") + grid.diff(vmo, "Y"))).where(mask, 0.).sum())
+
+    U, V = umo.values, vmo.values
+    flux = 0.0
+    for region in MaskRegions(mask, grid).region_dict.values():
+        uv = sec.uvindices_from_qindices(grid, region.i_c, region.j_c, f_c=region.f_c)
+        for k in range(len(uv["var"])):
+            if uv["var"][k] == "0":
+                continue
+            f, i, j = int(uv["face"][k]), int(uv["i"][k]), int(uv["j"][k])
+            flux += int(uv["Lsign"][k]) * (U[f, j, i] if uv["var"][k] == "U" else V[f, j, i])
+
+    assert np.isclose(convergence, flux, atol=1e-9)
+
+
 def test_seam_spanning_region_stitches_into_one_loop():
     grid = two_face_grid(Nc=3)
     # East column of face 0 + west column of face 1: a strip straddling the seam.

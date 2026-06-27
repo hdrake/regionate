@@ -76,16 +76,31 @@ def load_ECCO_LLC90_grid(data_dir="../data"):
     )
 
 
+# Natural Earth ocean basins that make up the Atlantic sector (open Atlantic plus
+# its embayments / marginal seas). The open ocean is split into several named
+# basins -- notably the Sargasso Sea fills the centre of the North Atlantic -- so
+# selecting only "*Atlantic*" would leave a large hole. The Mediterranean,
+# Pacific and Arctic basins are deliberately excluded.
+ATLANTIC_BASINS = (
+    "North Atlantic Ocean", "South Atlantic Ocean", "Sargasso Sea",
+    "Caribbean Sea", "Labrador Sea", "Gulf of Guinea", "Bay of Biscay",
+    "Gulf of Saint Lawrence", "Gulf of Maine", "Bay of Fundy", "Ungava Bay",
+    "Inner Seas", "Irish Sea", "Bristol Channel", "English Channel",
+    "North Sea", "Río de la Plata", "Golfo San Jorge",
+)
+
+
 def atlantic_basin_mask(grid):
     """Boolean Atlantic-basin ocean mask on the ECCO grid, from the published
-    Natural Earth ocean basins (North + South Atlantic Ocean) via ``regionmask``.
+    Natural Earth ocean basins (``ATLANTIC_BASINS``) via ``regionmask``.
 
-    Using a published basin polygon (rather than a lon/lat box) keeps the mask
-    geographically correct -- it follows the coastlines and excludes the Pacific.
+    Using published basin polygons (rather than a lon/lat box) keeps the mask
+    geographically correct -- it follows the coastlines, fills the central
+    Atlantic, and excludes the Pacific.
     """
     import regionmask
     ob = regionmask.defined_regions.natural_earth_v5_1_2.ocean_basins_50
-    atl_ids = [int(n) for n, nm in zip(ob.numbers, ob.names) if "Atlantic" in nm]
+    atl_ids = [int(n) for n, nm in zip(ob.numbers, ob.names) if nm in ATLANTIC_BASINS]
     facedim = grid._facedim
     lon, lat, depth = grid._ds["geolon"], grid._ds["geolat"], grid._ds["Depth"]
     arr = np.zeros(depth.shape, dtype=bool)
