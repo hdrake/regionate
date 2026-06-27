@@ -7,19 +7,17 @@ import xgcm
 import pytest
 
 import sectionate as sec
-from sectionate.gridutils import symmetrize
 from regionate.boundaries import grid_boundaries_from_mask
 from regionate import MaskRegions
 
 
 def rotated_two_tile_grid(Nc=4):
-    """A symmetrized 2-tile grid whose tiles meet at a ROTATED seam: face 0's
-    +X edge connects to face 1's Y axis (an X->Y, 90-degree connection). Each
-    tile is given its own disjoint coordinate block (face 1 offset by +100), so
-    the seam's two corner representations never coincide in lon/lat -- a region
+    """A native 'left'-staggered 2-tile grid whose tiles meet at a ROTATED seam:
+    face 0's +X edge connects to face 1's Y axis (an X->Y, 90-degree connection).
+    Each tile is given its own disjoint coordinate block (face 1 offset by +100),
+    so the seam's two corner representations never coincide in lon/lat -- a region
     spanning the seam can therefore only be stitched via the grid topology
-    (`build_neighbor_maps`), not coordinate coincidence. Built natively on the
-    MITgcm 'left' corner and converted with `sectionate.gridutils.symmetrize`."""
+    (cell adjacency), not coordinate coincidence."""
     ng = Nc  # native 'left' corners are the same size as centers
     LONc = np.zeros((2, ng, ng)); LATc = np.zeros((2, ng, ng))
     LON = np.zeros((2, Nc, Nc));  LAT = np.zeros((2, Nc, Nc))
@@ -45,7 +43,7 @@ def rotated_two_tile_grid(Nc=4):
         boundary="fill", fill_value=np.nan,
         face_connections=fc, autoparse_metadata=False,
     )
-    return symmetrize(grid_left, face_connections=fc)
+    return grid_left
 
 
 def test_rotated_seam_region_stitches_into_one_loop():

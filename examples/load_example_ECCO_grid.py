@@ -18,8 +18,6 @@ import numpy as np
 import xarray as xr
 import xgcm
 
-from sectionate.gridutils import symmetrize
-
 ECCO_GEOMETRY_FILE = "GRID_GEOMETRY_ECCO_V4r4_native_llc0090.nc"
 ECCO_GEOMETRY_SHORTNAME = "ECCO_L4_GEOMETRY_LLC0090GRID_V4R4"
 
@@ -56,23 +54,42 @@ def download_ECCO_geometry(data_dir="../data"):
 
 
 def load_ECCO_LLC90_grid(data_dir="../data"):
-    """Load the ECCOv4r4 LLC90 grid as a symmetric ``xgcm.Grid``.
+    """Load the ECCOv4r4 LLC90 grid as a native (MITgcm 'left'-staggered)
+    ``xgcm.Grid``.
 
     The returned grid has tracer-center coordinates ``geolon``/``geolat`` and
-    cell-corner coordinates ``geolon_c``/``geolat_c`` (on the symmetric 'outer'
-    position), carries ``Depth`` for land/ocean masking, and encodes the LLC90
-    tile topology via ``face_connections`` -- so regionate can trace region
-    boundaries across tile seams.
+    cell-corner coordinates ``geolon_c``/``geolat_c`` (on the native 'left'
+    vorticity position; sectionate supports this directly via
+    ``corner_position``/``corner_offset``), carries ``Depth`` for land/ocean
+    masking, and encodes the LLC90 tile topology via ``face_connections`` -- so
+    regionate can trace region boundaries across tile seams.
     """
     path = download_ECCO_geometry(data_dir=data_dir)
     ds = xr.open_dataset(path)
     ds = ds.rename({"XC": "geolon", "YC": "geolat",
                     "XG": "geolon_c", "YG": "geolat_c"})
-
-    grid_left = xgcm.Grid(
+    return xgcm.Grid(
         ds, periodic=False, autoparse_metadata=False,
         coords={"X": {"center": "i", "left": "i_g"},
                 "Y": {"center": "j", "left": "j_g"}},
         face_connections=LLC90_FACE_CONNECTIONS,
     )
-    return symmetrize(grid_left, face_connections=LLC90_FACE_CONNECTIONS)
+
+
+def atlantic_basin_mask(grid):
+    """Boolean Atlantic-basin ocean mask on the ECCO grid, from the published
+    Natural Earth ocean basins (North + South Atlantic Ocean) via ``regionmask``.
+
+    Using a published basin polygon (rather than a lon/lat box) keeps the mask
+    geographically correct -- it follows the coastlines and excludes the Pacific.
+    """
+    import regionmask
+    ob = regionmask.defined_regions.natural_earth_v5_1_2.ocean_basins_50
+    atl_ids = [int(n) for n, nm in zip(ob.numbers, ob.names) if "Atlantic" in nm]
+    facedim = grid._facedim
+    lon, lat, depth = grid._ds["geolon"], grid._ds["geolat"], grid._ds["Depth"]
+    arr = np.zeros(depth.shape, dtype=bool)
+    for f in range(grid._ds.sizes[facedim]):
+        ids = ob.mask(lon.isel({facedim: f}), lat.isel({facedim: f})).values
+        arr[f] = np.isin(ids, atl_ids)
+    return xr.DataArray(arr & (depth.values > 0), dims=depth.dims, coords=depth.coords)

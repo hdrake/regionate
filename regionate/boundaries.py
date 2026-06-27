@@ -7,23 +7,25 @@ from sectionate.gridutils import (
     get_facedim,
     get_geo_corners,
     coord_dict,
-    check_symmetric,
+    corner_offset,
     build_neighbor_maps,
+    NEIGHBOR_DIRECTIONS,
 )
-from sectionate.section import distance_on_unit_sphere, COINCIDENT_TOLERANCE_M
 
 
 def grid_boundaries_from_mask(grid, mask):
     """Find the cell-corner boundaries that enclose a boolean cell `mask`.
 
-    For single-tile grids (no `face_connections`) this traces the mask boundary
-    with `contourpy`, exactly as before. For multi-tile grids (lat-lon-cap,
-    cubed-sphere, ...) the boundary is traced face-by-face and stitched across
-    tile seams using the grid's `xgcm` topology, so a region that spans several
-    faces yields a single closed boundary loop.
+    Single-tile grids are traced with `contourpy`. Multi-tile grids
+    (`face_connections`, e.g. the lat-lon-cap or cubed-sphere) are traced
+    face-by-face with `contourpy` and then stitched across tile seams using the
+    grid topology, so a region spanning several faces yields a single closed
+    boundary loop whose corners are grid-adjacent everywhere (so the loop can be
+    turned into velocity faces by `sectionate.uvindices_from_qindices`).
 
-    Returns lists with a common length equal to the number of discrete contours
-    that bound the mask.
+    Returns lists with a common length equal to the number of discrete boundary
+    loops. `f_c_list` holds the per-corner face index for multi-tile grids; its
+    entries are `None` for single-tile grids.
 
     ARGUMENTS
     ---------
@@ -33,38 +35,30 @@ def grid_boundaries_from_mask(grid, mask):
     RETURNS
     -------
     i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list
-
-    `f_c_list` holds the per-corner face index for multi-tile grids; its entries
-    are `None` for single-tile grids.
     """
     if get_facedim(grid) is None:
         return _single_tile_boundaries_from_mask(grid, mask)
-    else:
-        return _multitile_boundaries_from_mask(grid, mask)
+    return _multitile_boundaries_from_mask(grid, mask)
 
 
-def _contour_to_corner_indices(c, symmetric):
-    """Map one `contourpy` polyline (closed, first==last) to closed cell-corner
-    index arrays `(i_c, j_c)`. This is the original single-tile remap, factored
-    out so it can be shared."""
+def _remap_contour(c, o):
+    """Map one `contourpy` polyline (center coordinates, first==last) to closed
+    cell-corner index arrays `(i_c, j_c)`, with the corner-position offset `o`
+    (1 for 'outer'/'left', 0 for 'right'; see `corner_offset`)."""
     i_c, j_c = c[:-1, 0], c[:-1, 1]
-
-    i_c_new, j_c_new = i_c.copy(), j_c.copy()
-
+    i_n, j_n = i_c.copy(), j_c.copy()
     i_inc = np.roll(i_c, -1) - i_c
     j_inc = np.roll(j_c, -1) - j_c
-
-    i_c_new[(i_c % 1) == 0.0] = (i_c - (i_inc < 0))[(i_c % 1) == 0.0] + symmetric
-    j_c_new[(j_c % 1) == 0.0] = (j_c - (j_inc < 0))[(j_c % 1) == 0.0] + symmetric
-    i_c_new[(i_c % 1) == 0.5] = np.floor(i_c[(i_c % 1) == 0.5]) + symmetric
-    j_c_new[(j_c % 1) == 0.5] = np.floor(j_c[(j_c % 1) == 0.5]) + symmetric
-
-    return loop(i_c_new).astype(np.int64), loop(j_c_new).astype(np.int64)
+    i_n[(i_c % 1) == 0.0] = (i_c - (i_inc < 0))[(i_c % 1) == 0.0] + o
+    j_n[(j_c % 1) == 0.0] = (j_c - (j_inc < 0))[(j_c % 1) == 0.0] + o
+    i_n[(i_c % 1) == 0.5] = np.floor(i_c[(i_c % 1) == 0.5]) + o
+    j_n[(j_c % 1) == 0.5] = np.floor(j_c[(j_c % 1) == 0.5]) + o
+    return loop(i_n).astype(np.int64), loop(j_n).astype(np.int64)
 
 
 def _single_tile_boundaries_from_mask(grid, mask):
     """Trace mask boundaries on a single-tile grid with `contourpy`."""
-    symmetric = check_symmetric(grid)
+    o = 1 - corner_offset(grid)
     cdict = coord_dict(grid)
     Xc, Yc = cdict["X"]["center"], cdict["Y"]["center"]
     Xq, Yq = cdict["X"]["corner"], cdict["Y"]["corner"]
@@ -81,12 +75,10 @@ def _single_tile_boundaries_from_mask(grid, mask):
 
     i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list = [], [], [], [], []
     for c in contours:
-        i_c_new, j_c_new = _contour_to_corner_indices(c, symmetric)
-
+        i_c_new, j_c_new = _remap_contour(c, o)
         i_c_list.append(i_c_new)
         j_c_list.append(j_c_new)
         f_c_list.append(None)
-
         idx = {
             Xq: xr.DataArray(i_c_new, dims=("pt",)),
             Yq: xr.DataArray(j_c_new, dims=("pt",)),
@@ -97,178 +89,165 @@ def _single_tile_boundaries_from_mask(grid, mask):
     return i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list
 
 
-def _pad_mask(grid, mask):
-    """Pad the boolean `mask` (on tracer-center points) by one cell in each
-    direction using the grid's own `xgcm` topology, so the halo holds each edge
-    cell's real neighbour across periodic wraps, tile seams and folds. Genuine
-    walls (fill/extend edges) are filled with NaN. Mirrors the padding used by
-    `sectionate.gridutils.build_neighbor_maps`, but for center-point data."""
+def _pad_center(grid, da):
+    """Pad a center-point field one cell in each direction using the grid's own
+    `xgcm` topology (periodic / `face_connections` / fold). Genuine walls are
+    filled with NaN. Mirrors `sectionate.gridutils.build_neighbor_maps`."""
     boundary = {ax: grid.axes[ax].boundary for ax in grid.axes}
     boundary_width = {ax: (1, 1) for ax in grid.axes}
-    a = mask.astype(float)
     if hasattr(grid, "pad"):
-        return grid.pad(a, boundary_width=boundary_width, boundary=boundary,
+        return grid.pad(da, boundary_width=boundary_width, boundary=boundary,
                         fill_value=np.nan)
     from xgcm.padding import pad as _module_pad
-    return _module_pad(a, grid, boundary_width, boundary=boundary,
-                       fill_value=np.nan)
+    return _module_pad(da, grid, boundary_width, boundary=boundary, fill_value=np.nan)
 
 
-# Each in-mask cell (f, j, i) contributes a boundary face for any of its four
-# neighbours that is not in the mask. A boundary face is recorded as a directed
-# corner edge oriented so that the in-mask cell lies to its LEFT (counter-
-# clockwise winding). Corner indices are expressed relative to the cell using
-# the symmetric/non-symmetric offset `o` (o=1 for 'outer' symmetric grids,
-# o=0 for 'right' non-symmetric grids): the cell's SW corner is (i-1+o, j-1+o).
-_DIRECTED_FACE_EDGES = {
-    # neighbour direction: (start_corner_offset, end_corner_offset)
-    # corner offsets are (di, dj) added to (i-1+o, j-1+o)
-    "right": ((1, 0), (1, 1)),  # east  face: SE -> NE  (+j)
-    "left":  ((0, 1), (0, 0)),  # west  face: NW -> SW  (-j)
-    "up":    ((1, 1), (0, 1)),  # north face: NE -> NW  (-i)
-    "down":  ((0, 0), (1, 0)),  # south face: SW -> SE  (+i)
+# Cells separated by a directed corner segment (ig,jg)->(ig+di,jg+dj), in the
+# padded-center index frame where corner (jg,ig) straddles cells [jg:jg+2, ig:ig+2].
+_SEG_CELLS = {
+    (1, 0):  ((1, 1), (0, 1)),   # +i: north, south
+    (-1, 0): ((1, 0), (0, 0)),   # -i: north, south
+    (0, 1):  ((1, 1), (1, 0)),   # +j: east, west
+    (0, -1): ((0, 1), (0, 0)),   # -j: east, west
 }
 
 
 def _multitile_boundaries_from_mask(grid, mask):
     """Trace and stitch mask boundaries across tile seams on a multi-tile grid."""
     facedim = get_facedim(grid)
-    symmetric = check_symmetric(grid)
-    o = 1 if symmetric else 0
-
     cdict = coord_dict(grid)
     Xc, Yc = cdict["X"]["center"], cdict["Y"]["center"]
     Xq, Yq = cdict["X"]["corner"], cdict["Y"]["corner"]
     geo = get_geo_corners(grid)
-    lon_c, lat_c = geo["X"].transpose(facedim, Yq, Xq), geo["Y"].transpose(facedim, Yq, Xq)
-
-    mask = mask.transpose(facedim, Yc, Xc)
-    nf = mask.sizes[facedim]
-
-    Mpad = _pad_mask(grid, mask).transpose(facedim, ..., Yc, Xc).values
-    m = mask.values.astype(bool)
-    lon_v, lat_v = lon_c.values, lat_c.values
-
-    # Neighbour value of each interior cell across each face (NaN == wall).
-    nbr = {
-        "right": Mpad[:, 1:-1, 2:],
-        "left":  Mpad[:, 1:-1, :-2],
-        "up":    Mpad[:, 2:, 1:-1],
-        "down":  Mpad[:, :-2, 1:-1],
-    }
-
-    def corner(f, ci, cj):
-        return (int(f), int(ci), int(cj), float(lon_v[f, cj, ci]), float(lat_v[f, cj, ci]))
-
-    edges = []  # list of (start_corner, end_corner)
-    fcells, jcells, icells = np.where(m)
-    for f, j, i in zip(fcells, jcells, icells):
-        base_i, base_j = i - 1 + o, j - 1 + o
-        for d, ((sdi, sdj), (edi, edj)) in _DIRECTED_FACE_EDGES.items():
-            neighbour = nbr[d][f, j, i]
-            if neighbour == 1.0:  # in-mask neighbour (incl. across a seam): internal
-                continue
-            start = corner(f, base_i + sdi, base_j + sdj)
-            end = corner(f, base_i + edi, base_j + edj)
-            edges.append((start, end))
-
-    # Topology-aware corner adjacency (handles rotated/reversed tile seams, where
-    # the two tiles' corners are offset and do not coincide in lon/lat).
+    lon_c = geo["X"].transpose(facedim, Yq, Xq).values
+    lat_c = geo["Y"].transpose(facedim, Yq, Xq).values
     maps = build_neighbor_maps(grid, geo)
 
-    def neighbor_corners(f, ci, cj):
-        nbrs = set()
-        for d in maps:
-            fmap, jmap, imap = maps[d]
-            nf_ = int(fmap[f, cj, ci]) if fmap is not None else f
-            nbrs.add((nf_, int(imap[f, cj, ci]), int(jmap[f, cj, ci])))
-        return nbrs
+    mask = mask.transpose(facedim, Yc, Xc)
+    nf, Nyc, Nxc = mask.shape
+    Mpad = _pad_center(grid, mask.astype(float)).transpose(facedim, ..., Yc, Xc).values
+    cid = xr.DataArray(
+        np.arange(nf * Nyc * Nxc, dtype=float).reshape(nf, Nyc, Nxc), dims=(facedim, Yc, Xc)
+    )
+    Cpad = _pad_center(grid, cid).transpose(facedim, ..., Yc, Xc).values
+    m = mask.values
 
-    return _stitch_edges_into_loops(edges, neighbor_corners)
+    def cellset(f, jg, ig):
+        v = (Cpad[f, jg, ig], Cpad[f, jg, ig + 1], Cpad[f, jg + 1, ig], Cpad[f, jg + 1, ig + 1])
+        return frozenset(None if np.isnan(x) else int(x) for x in v)
 
+    def neighbours(f, j, i):
+        out = []
+        for d in NEIGHBOR_DIRECTIONS:
+            fm, jm, im = maps[d]
+            out.append((int(fm[f, j, i]), int(jm[f, j, i]), int(im[f, j, i])))
+        return out
 
-def _stitch_edges_into_loops(edges, neighbor_corners=None):
-    """Stitch directed corner edges into ordered closed boundary loops.
+    # --- Stage 1+2: contourpy per face -> open arcs of KEEP segments + closed loops ---
+    arcs, closed = [], []
+    for f in range(nf):
+        z = np.pad(m[f].astype(float), 1)
+        cs = contourpy.contour_generator(
+            np.arange(-1, Nxc + 1), np.arange(-1, Nyc + 1), z
+        ).create_contour(0.5)
+        for c in cs:
+            ig, jg = _remap_contour(c, 1)
+            ig, jg = ig[:-1], jg[:-1]  # open cyclic sequence
+            N = len(ig)
+            keep = np.ones(N, bool)
+            for k in range(N):
+                k2 = (k + 1) % N
+                (aj, ai), (bj, bi) = _SEG_CELLS[(int(ig[k2] - ig[k]), int(jg[k2] - jg[k]))]
+                # a segment is INTERNAL (cut) iff both cells it separates are in-mask
+                if (Mpad[f, jg[k] + aj, ig[k] + ai] == 1.0
+                        and Mpad[f, jg[k] + bj, ig[k] + bi] == 1.0):
+                    keep[k] = False
+            if keep.all():
+                closed.append([(f, int(jg[k]), int(ig[k])) for k in range(N)])
+                continue
+            cut = np.where(~keep)[0]
+            start = (cut[-1] + 1) % N
+            run = []
+            for t in range(N):
+                k = (start + t) % N
+                if keep[k]:
+                    if not run:
+                        run = [(f, int(jg[k]), int(ig[k]))]
+                    run.append((f, int(jg[(k + 1) % N]), int(ig[(k + 1) % N])))
+                elif run:
+                    arcs.append(run)
+                    run = []
+            if run:
+                arcs.append(run)
 
-    The end corner of each edge is matched to the start corner of the next edge
-    in three escalating ways: (1) the exact same grid corner (within a tile);
-    (2) a physically coincident corner (a shared seam corner of a non-rotated
-    tile connection); and (3) a grid-adjacent corner via the topology neighbour
-    maps (a rotated/reversed seam crossing, where the two tiles' corners are
-    offset by a cell and never coincide in lon/lat). `neighbor_corners(f, i, j)`
-    returns the set of grid-neighbour corners of a corner; pass it for multi-tile
-    grids."""
-    if not edges:
-        return [], [], [], [], []
+    # --- Stage 3: stitch arcs into face-local loops by cell-set at endpoints ---
+    ends = {}
+    for ai, arc in enumerate(arcs):
+        for f, jg, ig in (arc[0], arc[-1]):
+            ends.setdefault(cellset(f, jg, ig), []).append(ai)
+    used = [False] * len(arcs)
+    facelocal = list(closed)
+    for a0 in range(len(arcs)):
+        if used[a0]:
+            continue
+        lp, ai, from_start = [], a0, True
+        while not used[ai]:
+            used[ai] = True
+            seg = arcs[ai] if from_start else arcs[ai][::-1]
+            lp.extend(seg[:-1])
+            tail = seg[-1]
+            ks = cellset(*tail)
+            nxt = [a for a in ends.get(ks, []) if not used[a]]
+            if not nxt:
+                lp.append(tail)
+                break
+            ai = nxt[0]
+            from_start = cellset(*arcs[ai][0]) == ks
+        facelocal.append(lp)
 
-    # Index edges by their exact start corner (face, i, j).
-    start_by_corner = {}
-    for k, (s, e) in enumerate(edges):
-        start_by_corner.setdefault((s[0], s[1], s[2]), []).append(k)
-
-    used = [False] * len(edges)
-
-    def find_next(end):
-        # 1. an edge starting at the exact same corner (interior of a tile)
-        for k in start_by_corner.get((end[0], end[1], end[2]), []):
-            if not used[k]:
-                return k
-        # 2. an edge starting at a physically coincident corner (non-rotated seam)
-        for k, (s, _e) in enumerate(edges):
-            if (not used[k] and
-                    distance_on_unit_sphere(end[3], end[4], s[3], s[4]) < COINCIDENT_TOLERANCE_M):
-                return k
-        # 3. an edge starting at a grid-adjacent corner (rotated/reversed seam)
-        if neighbor_corners is not None:
-            for nb in neighbor_corners(end[0], end[1], end[2]):
-                for k in start_by_corner.get(nb, []):
-                    if not used[k]:
-                        return k
-        return None
+    # --- Convert face-local corners to native (f, j, i), grid-adjacent ---
+    # native corner-array shape ('outer' has Nc+1 corners, 'left'/'right' have Nc)
+    Nyq, Nxq = lon_c.shape[1], lon_c.shape[2]
+    seed = {}
+    for f in range(nf):
+        for jn in range(Nyq):
+            for inx in range(Nxq):
+                seed.setdefault(cellset(f, jn, inx), (f, jn, inx))
 
     i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list = [], [], [], [], []
-
-    for start_k in range(len(edges)):
-        if used[start_k]:
+    for lp in facelocal:
+        targets = [cellset(*c) for c in lp]
+        prev = seed.get(targets[0])
+        if prev is None:
             continue
-        # Walk a single closed loop starting from this unused edge.
-        loop_edges = []
-        k = start_k
-        while k is not None and not used[k]:
-            used[k] = True
-            loop_edges.append(k)
-            k = find_next(edges[k][1])
+        nat = [prev]
+        for k in range(1, len(targets)):
+            cands = [prev] + neighbours(*prev)
+            match = [c for c in cands if cellset(c[0], c[1], c[2]) == targets[k]]
+            prev = match[0] if match else seed.get(targets[k], prev)
+            nat.append(prev)
 
-        seq = _loop_corner_sequence([edges[k] for k in loop_edges])
-        i_c = np.array([c[1] for c in seq], dtype=np.int64)
-        j_c = np.array([c[2] for c in seq], dtype=np.int64)
+        # Repair seam crossings the cell-set match over-merged: where consecutive
+        # corners are not grid-adjacent, insert the corner where they meet (the
+        # neighbour of A that lies on B's tile and neighbours B).
+        rep = []
+        for k in range(len(nat)):
+            a = nat[k]
+            rep.append(a)
+            b = nat[(k + 1) % len(nat)]
+            if a != b and b not in neighbours(*a):
+                bridge = [c for c in neighbours(*a) if c[0] == b[0] and c in neighbours(*b)]
+                if bridge:
+                    rep.append(bridge[0])
+
+        seq = rep if rep[-1] == rep[0] else rep + [rep[0]]   # close exactly once
         f_c = np.array([c[0] for c in seq], dtype=np.int64)
-        lons = np.array([c[3] for c in seq])
-        lats = np.array([c[4] for c in seq])
-
-        i_c_list.append(loop(i_c))
-        j_c_list.append(loop(j_c))
-        f_c_list.append(loop(f_c))
-        lons_c_list.append(lons)
-        lats_c_list.append(lats)
+        j_c = np.array([c[1] for c in seq], dtype=np.int64)
+        i_c = np.array([c[2] for c in seq], dtype=np.int64)
+        i_c_list.append(i_c)
+        j_c_list.append(j_c)
+        f_c_list.append(f_c)
+        lons_c_list.append(np.array([float(lon_c[c[0], c[1], c[2]]) for c in seq[:-1]]))
+        lats_c_list.append(np.array([float(lat_c[c[0], c[1], c[2]]) for c in seq[:-1]]))
 
     return i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list
-
-
-def _loop_corner_sequence(loop_edges):
-    """Build the open corner sequence for one closed loop of directed edges.
-
-    Each edge's start corner is emitted. Where an edge ends on one face and the
-    next edge starts on another (a seam crossing), the far-face end corner is
-    emitted too, producing the consecutive duplicate physical points that
-    `sectionate.uvindices_from_qindices` consumes (it drops the zero-length
-    seam faces)."""
-    seq = []
-    m = len(loop_edges)
-    for k in range(m):
-        s, e = loop_edges[k]
-        ns = loop_edges[(k + 1) % m][0]  # next edge's start corner
-        seq.append(s)
-        if (e[0], e[1], e[2]) != (ns[0], ns[1], ns[2]):
-            seq.append(e)
-    return seq

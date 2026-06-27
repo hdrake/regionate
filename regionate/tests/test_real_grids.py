@@ -56,41 +56,46 @@ def test_mom6_global_box_mask_boundary_consistency():
     not os.path.isfile(ECCO_FILE),
     reason="ECCO LLC90 geometry not downloaded (see examples/load_example_ECCO_grid.py)",
 )
-def test_ecco_llc90_seam_region_stitches_across_tiles():
-    """On the real ECCOv4r4 lat-lon-cap (LLC90) grid, a contiguous region that
-    straddles the tile-1/tile-2 seam is traced as a single boundary loop whose
-    per-corner face index spans both tiles. Exercises `sectionate.symmetrize`
-    (native MITgcm 'left' -> symmetric) plus regionate's multi-tile stitching."""
+def _load_ecco():
     import sys
     sys.path.insert(0, os.path.abspath(EXAMPLES_DIR))
-    from load_example_ECCO_grid import load_ECCO_LLC90_grid
-    from regionate import MaskRegions
-
+    from load_example_ECCO_grid import load_ECCO_LLC90_grid, atlantic_basin_mask
     grid = load_ECCO_LLC90_grid(data_dir=os.path.abspath(DATA_DIR))
+    return grid, atlantic_basin_mask
+
+
+def test_ecco_llc90_seam_region_stitches_across_tiles():
+    """On the real ECCOv4r4 lat-lon-cap (LLC90, native MITgcm 'left') grid, a
+    contiguous region straddling the tile-1/tile-2 seam is traced as a single
+    boundary loop whose per-corner face index spans both tiles."""
+    from regionate import MaskRegions
+    grid, _ = _load_ecco()
     lon, lat = grid._ds["geolon"], grid._ds["geolat"]
     mask = ((lon > -30) & (lon < 20) & (lat > -5) & (lat < 25)).compute()
 
     regions = MaskRegions(mask, grid).region_dict
     assert len(regions) == 1
-    region = regions[0]
-    assert set(np.asarray(region.f_c).tolist()) == {1, 2}   # boundary spans both tiles
+    assert set(np.asarray(regions[0].f_c).tolist()) == {1, 2}
 
 
-def test_ecco_llc90_stitches_across_rotated_seam():
-    """A mid-Atlantic strip crosses the rotated tile-2/tile-10 (X->Y) seam, where
-    the two tiles' symmetric corners are offset and do not coincide in lon/lat.
-    It must still stitch into one connected loop spanning all four tiles, via the
-    topology (neighbour-map) join rather than coordinate coincidence."""
-    import sys
-    sys.path.insert(0, os.path.abspath(EXAMPLES_DIR))
-    from load_example_ECCO_grid import load_ECCO_LLC90_grid
+def test_ecco_atlantic_basin_boundary_and_transports():
+    """The published Atlantic basin (regionmask) on the LLC90 grid traces as a
+    boundary spanning many tiles across rotated seams and the Arctic cap, and --
+    critically -- the boundary is grid-adjacent everywhere, so it converts to
+    velocity (u,v) faces via sectionate (the flux-divergence consistency that is
+    the whole point of the package)."""
+    import sectionate as sec
     from regionate import MaskRegions
+    grid, atlantic_basin_mask = _load_ecco()
 
-    grid = load_ECCO_LLC90_grid(data_dir=os.path.abspath(DATA_DIR))
-    lon, lat, depth = grid._ds["geolon"], grid._ds["geolat"], grid._ds["Depth"]
-    strip = ((depth > 0) & (lon > -42) & (lon < -34) & (lat > 0) & (lat < 40)).compute()
+    mask = atlantic_basin_mask(grid)
+    regions = MaskRegions(mask, grid).region_dict
+    basin = max(regions.values(), key=lambda r: len(r.lons_c))
+    faces = set(np.asarray(basin.f_c).tolist())
+    assert len(faces) >= 4                      # spans many tiles (rotated seams)
 
-    regions = MaskRegions(strip, grid).region_dict
-    biggest = max(regions.values(), key=lambda r: len(r.lons_c))
-    faces = set(np.asarray(biggest.f_c).tolist())
-    assert faces == {1, 2, 10, 11}    # one boundary stitched across the rotated seam
+    # The basin boundary must be convertible to velocity faces -- this is the
+    # strong test: it requires every consecutive corner pair to be grid-adjacent.
+    lons_uv, lats_uv = sec.uvcoords_from_qindices(
+        grid, basin.i_c, basin.j_c, f_c=basin.f_c)
+    assert len(lons_uv) > 0
