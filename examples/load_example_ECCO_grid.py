@@ -1,25 +1,35 @@
 """Load the ECCOv4r4 native lat-lon-cap (LLC90) grid as a symmetric xgcm.Grid
-that regionate can consume.
+that regionate can consume, plus one month of native 3-D temperature fluxes.
 
-The ECCO geometry file is distributed by NASA PO.DAAC and requires a (free)
-NASA Earthdata Login. If the file is not already present under ``../data/`` it
-is downloaded with ``earthaccess`` (which reads credentials from ``~/.netrc``;
-run ``earthaccess.login(persist=True)`` once to set this up).
+The ECCO geometry and flux files are redistributed (with the ECCO Consortium's
+permission) from the regionate/sectionate example archive on Zenodo,
+https://doi.org/10.5281/zenodo.21051424 -- so no NASA Earthdata login is needed.
+Files not already present under ``../data/`` are fetched on demand over HTTP,
+mirroring ``load_example_model_grid.download_MOM6_example_data``.
 
 The native grid is MITgcm-staggered (vorticity points on the SW / 'left'
 corner) and names its coordinates ``XC/YC`` (centers) and ``XG/YG`` (corners).
-We rename those to the ``geolon*/geolat*`` convention and use
-``sectionate.gridutils.symmetrize`` to build the equivalent symmetric ('outer')
-grid, which regionate/sectionate operate on.
+We rename those to the ``geolon*/geolat*`` convention; sectionate consumes the
+native 'left' staggering directly via ``corner_position``/``corner_offset``.
 """
 
 import os
+import urllib.request
+import shutil
 import numpy as np
 import xarray as xr
 import xgcm
 
+# Concept DOI https://doi.org/10.5281/zenodo.21051424 resolves to this version
+# record; files are served at <record>/files/<file_name>.
+ZENODO_RECORD = "21051920"
+ZENODO_FILES_URL = f"https://zenodo.org/records/{ZENODO_RECORD}/files/"
+
 ECCO_GEOMETRY_FILE = "GRID_GEOMETRY_ECCO_V4r4_native_llc0090.nc"
-ECCO_GEOMETRY_SHORTNAME = "ECCO_L4_GEOMETRY_LLC0090GRID_V4R4"
+# Monthly 3-D advective + diffusive temperature fluxes (2010-MM); MM in 1..12.
+ECCO_TEMPERATURE_FLUX_FILE = (
+    "OCEAN_3D_TEMPERATURE_FLUX_mon_mean_2010-{month:02d}_ECCO_V4r4_native_llc0090.nc"
+)
 
 # Canonical xgcm face_connections for the 13-tile LLC90 grid
 # (from the xgcm ECCOv4 example), keyed by the ECCO 'tile' dimension.
@@ -40,17 +50,26 @@ LLC90_FACE_CONNECTIONS = {"tile": {
 }}
 
 
+def download_ECCO_data(file_name, data_dir="../data"):
+    """Return the local path to an ECCO example file, downloading it from the
+    Zenodo archive (https://doi.org/10.5281/zenodo.21051424) into ``data_dir``
+    if it is not already present. No NASA Earthdata login is required."""
+    destination_path = os.path.join(data_dir, file_name)
+    if not os.path.exists(destination_path):
+        print(f"File '{file_name}' being downloaded to {destination_path}.")
+        with urllib.request.urlopen(ZENODO_FILES_URL + file_name) as response, \
+                open(destination_path, "wb") as out_file:
+            shutil.copyfileobj(response, out_file)
+        print(f"File '{file_name}' has completed download to {destination_path}.")
+    else:
+        print(f"File '{file_name}' already exists at {destination_path}. Skipping download.")
+    return destination_path
+
+
 def download_ECCO_geometry(data_dir="../data"):
     """Return the local path to the ECCO geometry file, downloading it from
-    PO.DAAC via earthaccess if it is not already present."""
-    path = os.path.join(data_dir, ECCO_GEOMETRY_FILE)
-    if os.path.exists(path):
-        return path
-    import earthaccess
-    earthaccess.login()  # uses ~/.netrc
-    results = earthaccess.search_data(short_name=ECCO_GEOMETRY_SHORTNAME, count=1)
-    earthaccess.download(results, local_path=data_dir)
-    return path
+    Zenodo if it is not already present."""
+    return download_ECCO_data(ECCO_GEOMETRY_FILE, data_dir=data_dir)
 
 
 def load_ECCO_LLC90_grid(data_dir="../data"):
@@ -108,3 +127,26 @@ def atlantic_basin_mask(grid):
         ids = ob.mask(lon.isel({facedim: f}), lat.isel({facedim: f})).values
         arr[f] = np.isin(ids, atl_ids)
     return xr.DataArray(arr & (depth.values > 0), dims=depth.dims, coords=depth.coords)
+
+
+def load_ECCO_temperature_flux(month=1, data_dir="../data"):
+    """Load one month of ECCOv4r4 native 3-D temperature fluxes (default
+    2010-01), downloading the file from Zenodo if needed.
+
+    The returned single-time-step ``xarray.Dataset`` carries the advective heat
+    fluxes ``ADVx_TH``/``ADVy_TH`` on the U/V velocity faces (units degC m3 s-1),
+    indexed by the native vertical tracer dimension ``k`` (so a column integral
+    is ``ADVx_TH.sum("k")``).
+
+    The two flux components are promoted to float64. The archived data is
+    float32, whose ~1e-7 relative precision (about 12 degC m3 s-1 on these
+    O(1e8) transports) would otherwise dominate the discrete divergence-theorem
+    residual and mask the exact boundary/interior closure.
+    """
+    path = download_ECCO_data(
+        ECCO_TEMPERATURE_FLUX_FILE.format(month=month), data_dir=data_dir
+    )
+    ds = xr.open_dataset(path).isel(time=0)
+    for var in ("ADVx_TH", "ADVy_TH"):
+        ds[var] = ds[var].astype("float64")
+    return ds
