@@ -15,9 +15,20 @@ classifiers = [
 dependencies = [
     "pyproj",
     "geopandas",
+    "shapely",
+    # Multi-tile (lat-lon-cap / cap) padding needs the face_connections
+    # halo-padding fix in hdrake/xgcm@fix-faceconnection-pad-712 (xgcm pad-712).
+    # Until it is released to PyPI, CI installs xgcm from that ref (see
+    # .github/workflows/ci.yml); the floor stays at the satisfiable 0.9.0.
+    "xgcm >= 0.9.0",
     "regionmask",
     "contourpy",
-    "sectionate >= 0.3.3"
+    # Requires the topology-driven sectionate API (face_connections- and
+    # fold-aware neighbour finding, plus the 'left'/rotated-seam corner-neighbour
+    # correction) from MOM6-community/sectionate#47. Until that is released to
+    # PyPI, CI installs sectionate from the PR ref (see .github/workflows/ci.yml).
+    # That branch self-reports version 0.3.3, so the floor stays at 0.3.3.
+    "sectionate >= 0.3.3",
 ]
 
 [project.urls]

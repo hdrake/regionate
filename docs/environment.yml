@@ -9,7 +9,7 @@ dependencies:
   - jupyterlab
   - matplotlib
   - netcdf4
-  - pydap
+  - pandoc
   - pytest
   - sphinx
   - nbsphinx

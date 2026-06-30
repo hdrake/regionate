@@ -50,6 +50,24 @@ def test_gridded_region_from_boundary():
     region_rev = GriddedRegion("test_region2", lonseg[::-1], latseg[::-1], grid)
     assert np.all(np.equal(region.mask, region_rev.mask))
     
+def test_pole_encircling_boundary_fills_hemisphere():
+    from regionate import GriddedRegion
+
+    grid = initialize_spherical_grid()
+    # A zonal line encircling the globe at the equator encloses a hemisphere; the
+    # boundary cannot be drawn as a simple lon/lat polygon, so it is extended to
+    # the South Pole. Both windings must enclose the same (southern) hemisphere.
+    lonseg = np.array([0., 120., 240., 360.])
+    latseg = np.array([0., 0., 0., 0.])
+    region = GriddedRegion("hemi", lonseg, latseg, grid)
+    region_rev = GriddedRegion("hemi_rev", lonseg[::-1], latseg[::-1], grid)
+
+    assert int(region.mask.sum()) == 18              # 3 southern rows x 6 columns
+    assert np.all(np.equal(region.mask, region_rev.mask))
+    assert bool(region.mask.where(grid._ds.yh < 0, other=True).all())   # all southern in
+    assert not bool(region.mask.where(grid._ds.yh > 0, other=False).any())  # no northern
+
+
 def test_gridded_region_from_mask():
     from regionate import MaskRegions
     
