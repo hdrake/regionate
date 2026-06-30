@@ -1,9 +1,11 @@
 """Optional end-to-end checks against real ocean-model grids.
 
 These are skipped by default. Enable them by setting REGIONATE_REALDATA_TESTS=1
-(and, for the ECCO check, pointing REGIONATE_ECCO_GRID at a NetCDF file holding
-an ECCOv4r4 LLC90 grid with `face_connections`). They validate the multi-model
-goal of the overhaul on genuine MOM6 (tripolar) and ECCO (lat-lon-cap) output.
+with the corresponding example file present locally under ``data/`` -- the MOM6
+global example, and (for the ECCO checks) the LLC90 geometry downloaded by
+``examples/load_example_ECCO_grid.py``. They validate the multi-model goal of the
+overhaul on genuine MOM6 (tripolar) and ECCO (lat-lon-cap) output. The default
+suite never reaches out to the network.
 """
 
 import os
@@ -52,10 +54,18 @@ def test_mom6_global_box_mask_boundary_consistency():
     assert bool((union.values == region.mask.values).all())
 
 
-@pytest.mark.skipif(
-    not os.path.isfile(ECCO_FILE),
-    reason="ECCO LLC90 geometry not downloaded (see examples/load_example_ECCO_grid.py)",
+# Opt-in gate for the ECCO end-to-end tests, mirroring the MOM6 test above: they
+# require REGIONATE_REALDATA_TESTS=1 *and* a locally-present LLC90 geometry file, so
+# the default suite (and CI) never downloads from the network. NB this must decorate
+# the test functions themselves -- a skipif marker on the `_load_ecco` helper is inert
+# (pytest only honours markers on collected `test_*` functions).
+_requires_ecco = pytest.mark.skipif(
+    not (REALDATA and os.path.isfile(ECCO_FILE)),
+    reason="set REGIONATE_REALDATA_TESTS=1 and download the ECCO LLC90 geometry "
+           "(see examples/load_example_ECCO_grid.py)",
 )
+
+
 def _load_ecco():
     import sys
     sys.path.insert(0, os.path.abspath(EXAMPLES_DIR))
@@ -64,6 +74,7 @@ def _load_ecco():
     return grid, atlantic_basin_mask
 
 
+@_requires_ecco
 def test_ecco_llc90_seam_region_stitches_across_tiles():
     """On the real ECCOv4r4 lat-lon-cap (LLC90, native MITgcm 'left') grid, a
     contiguous region straddling the tile-1/tile-2 seam is traced as a single
@@ -78,6 +89,7 @@ def test_ecco_llc90_seam_region_stitches_across_tiles():
     assert set(np.asarray(regions[0].f_c).tolist()) == {1, 2}
 
 
+@_requires_ecco
 def test_ecco_atlantic_basin_boundary_and_transports():
     """The published Atlantic basin (regionmask) on the LLC90 grid traces as a
     boundary spanning many tiles across rotated seams and the Arctic cap, and --
@@ -101,6 +113,7 @@ def test_ecco_atlantic_basin_boundary_and_transports():
     assert len(lons_uv) > 0
 
 
+@_requires_ecco
 def test_ecco_atlantic_basin_obeys_discrete_divergence_theorem():
     """The whole point of the package: a region's budget must close against the
     fluxes through its traced boundary. On the real LLC90 grid, for the full

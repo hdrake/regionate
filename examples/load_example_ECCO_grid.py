@@ -56,10 +56,20 @@ def download_ECCO_data(file_name, data_dir="../data"):
     if it is not already present. No NASA Earthdata login is required."""
     destination_path = os.path.join(data_dir, file_name)
     if not os.path.exists(destination_path):
+        os.makedirs(data_dir, exist_ok=True)
         print(f"File '{file_name}' being downloaded to {destination_path}.")
-        with urllib.request.urlopen(ZENODO_FILES_URL + file_name) as response, \
-                open(destination_path, "wb") as out_file:
-            shutil.copyfileobj(response, out_file)
+        # Stream to a temporary file and atomically rename on success, so an interrupted
+        # transfer never leaves a truncated file that a later call mistakes for complete.
+        tmp_path = destination_path + ".part"
+        try:
+            with urllib.request.urlopen(ZENODO_FILES_URL + file_name) as response, \
+                    open(tmp_path, "wb") as out_file:
+                shutil.copyfileobj(response, out_file)
+            os.replace(tmp_path, destination_path)
+        except BaseException:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise
         print(f"File '{file_name}' has completed download to {destination_path}.")
     else:
         print(f"File '{file_name}' already exists at {destination_path}. Skipping download.")

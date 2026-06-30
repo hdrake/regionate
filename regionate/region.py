@@ -239,7 +239,7 @@ class GriddedRegion(Region):
         There are two key files within each .gr directory:
           - a `grid.nc` file that contains information about the coordinates
           requires to create an `xgcm.Grid` instance
-          - a `boundary.nc` file that contains the region's tracer cell mask
+          - a `region.nc` file that contains the region's tracer cell mask
           and the coordinates and indices of the corner cells that define its
           boundary.
 
@@ -253,7 +253,7 @@ class GriddedRegion(Region):
 
         Example
         -------
-        >>> gridded_region.save('../data/')
+        >>> gridded_region.to_gr('../data/')
         """
         gr_path = f"{path}/{self.name.replace(' ','_')}.gr/"
         Path(gr_path).mkdir(parents=True, exist_ok=True)
