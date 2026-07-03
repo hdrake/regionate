@@ -1,7 +1,15 @@
 import contourpy
 import numpy as np
 import xarray as xr
-from xgcm.padding import pad, _is_fold_boundary
+from xgcm.padding import pad
+try:
+    # north-fold boundary detector; only present in xgcm with north-fold support (xgcm#711)
+    from xgcm.padding import _is_fold_boundary
+except ImportError:  # pragma: no cover - fall back so `import regionate` works on any xgcm
+    from collections.abc import Mapping
+
+    def _is_fold_boundary(boundary):
+        return isinstance(boundary, Mapping) and "fold" in boundary
 
 from .utilities import loop
 from sectionate.gridutils import (
