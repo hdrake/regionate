@@ -18,6 +18,9 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
 MOM6_FILE = os.path.join(
     DATA_DIR, "MOM6_global_example_vertically_integrated_mass_budget_v0_0_6.nc"
 )
+MOM6_HEAT_FILE = os.path.join(
+    DATA_DIR, "MOM6_global_example_vertically_integrated_heat_budget_v0_0_6.nc"
+)
 ECCO_FILE = os.path.join(DATA_DIR, "GRID_GEOMETRY_ECCO_V4r4_native_llc0090.nc")
 EXAMPLES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "examples")
 
@@ -52,6 +55,66 @@ def test_mom6_global_box_mask_boundary_consistency():
     for r in retraced.values():
         union = r.mask if union is None else (union | r.mask)
     assert bool((union.values == region.mask.values).all())
+
+
+@pytest.mark.skipif(
+    not (REALDATA and os.path.isfile(MOM6_HEAT_FILE)),
+    reason="set REGIONATE_REALDATA_TESTS=1 and provide the MOM6 heat-budget example file",
+)
+def test_mom6_arctic_fold_region_is_single_and_closes_budget():
+    """On the real global MOM6 tripolar grid, the high-Arctic cold region straddles
+    the bipolar north fold. With the fold boundary it must trace into a SINGLE region
+    (rather than the two halves the ``Y='extend'`` wall gives), that region's boundary
+    must reach the fold seam, and its advective-heat convergence must close the budget
+    against the volume-integrated tendency (the discrete divergence theorem). This is
+    the worked example of ``examples/3_Arctic_heat_CM4p25.ipynb`` as a regression test,
+    and exercises the real-grid seam coincidence (antimeridian/pole) the fold stitch
+    relies on."""
+    import xgcm
+    import sectionate as sec
+    from regionate import MaskRegions
+
+    ds = xr.open_dataset(MOM6_HEAT_FILE).fillna(0.)
+    ds = ds.expand_dims(["z_l"]).assign_coords({
+        "z_l": xr.DataArray([3000], dims=("z_l",)),
+        "z_i": xr.DataArray([0, 6000], dims=("z_i",))})
+    coords = {"X": {"center": "xh", "outer": "xq"},
+              "Y": {"center": "yh", "outer": "yq"}}
+    mask = ((ds["tos"].squeeze() < 0.) & (ds["geolat"] > 0)).compute()
+    mask = xr.DataArray(mask.values, dims=("yh", "xh"),
+                        coords={"geolon": ds.geolon, "geolat": ds.geolat})
+    seam = ds.sizes["yq"] - 1
+
+    def large(grid):
+        return [r for r in MaskRegions(mask, grid).region_dict.values()
+                if len(r.i_c) > 100]
+
+    grid_extend = xgcm.Grid(ds, coords=coords, boundary={"X": "periodic", "Y": "extend"},
+                            autoparse_metadata=False)
+    grid_fold = xgcm.Grid(ds, coords=coords, boundary={"X": "periodic", "Y": {"fold": "corner"}},
+                          autoparse_metadata=False)
+
+    big_extend = large(grid_extend)
+    big_fold = large(grid_fold)
+    # the fold merges the two seam-split halves: fewer large seam-touching regions
+    seam_extend = sum((np.asarray(r.j_c) == seam).any() for r in big_extend)
+    seam_fold = sum((np.asarray(r.j_c) == seam).any() for r in big_fold)
+    assert seam_fold < seam_extend
+    # the single biggest fold region spans the seam (traces across the fold)
+    biggest = max(big_fold, key=lambda r: len(r.i_c))
+    assert (np.asarray(biggest.j_c) == seam).any()
+
+    # discrete divergence theorem: boundary heat convergence == volume tendency
+    regions = MaskRegions(mask, grid_fold).region_dict
+    total = 0.0
+    for r in regions.values():
+        dsec = sec.convergent_transport(
+            grid_fold, r.i_c, r.j_c, f_c=r.f_c, utr="T_adx", vtr="T_ady",
+            layer="z_l", interface="z_i", outname="cht", positive_in=r.mask)
+        total += float(dsec["cht"].sum("z_l").isel(time=0).sum(["sect"]).values)
+    dheatdt = (ds["T_advection_xy"] * ds["areacello"]).sum("z_l")
+    tend = float(dheatdt.where(mask).sum(["xh", "yh"]).isel(time=0).values)
+    assert np.isclose(total, tend, rtol=1e-3)
 
 
 # Opt-in gate for the ECCO end-to-end tests, mirroring the MOM6 test above: they

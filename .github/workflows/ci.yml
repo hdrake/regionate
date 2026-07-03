@@ -42,11 +42,12 @@ jobs:
           mamba env update -f ci/environment.yml
           # TODO: drop these two explicit installs once their upstreams release the
           # required fixes to PyPI; the floors in pyproject.toml will then suffice.
-          # (1) the xgcm face_connections halo-padding fix needed for correct
-          #     multi-tile (lat-lon-cap / cap) padding (hdrake/xgcm pad-712), and
+          # (1) the xgcm bipolar north-fold boundary (xgcm#711, tripolar-north-fold),
+          #     which also contains the face_connections halo-padding fix (xgcm#712)
+          #     needed for correct multi-tile (lat-lon-cap / cap) padding, and
           # (2) the topology-driven sectionate API + 'left'/rotated-seam corner
           #     neighbour fix (MOM6-community/sectionate#47).
-          python -m pip install "xgcm @ git+https://github.com/hdrake/xgcm.git@fix-faceconnection-pad-712"
+          python -m pip install "xgcm @ git+https://github.com/hdrake/xgcm.git@tripolar-north-fold"
           python -m pip install "sectionate @ git+https://github.com/MOM6-community/sectionate.git@refs/pull/47/head"
           python -m pip install -e .
       - name: Conda list information

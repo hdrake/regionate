@@ -1,7 +1,7 @@
 import contourpy
 import numpy as np
 import xarray as xr
-from xgcm.padding import pad
+from xgcm.padding import pad, _is_fold_boundary
 
 from .utilities import loop
 from sectionate.gridutils import (
@@ -17,16 +17,26 @@ from sectionate.gridutils import (
 def grid_boundaries_from_mask(grid, mask):
     """Find the cell-corner boundaries that enclose a boolean cell `mask`.
 
-    Single-tile grids are traced with `contourpy`. Multi-tile grids
-    (`face_connections`, e.g. the lat-lon-cap or cubed-sphere) are traced
-    face-by-face with `contourpy` and then stitched across tile seams using the
-    grid topology, so a region spanning several faces yields a single closed
-    boundary loop whose corners are grid-adjacent everywhere (so the loop can be
-    turned into velocity faces by `sectionate.uvindices_from_qindices`).
+    The tracer follows the grid's own topology, so it is correct for every
+    `xgcm.Grid` supported by the fold/`face_connections` padding:
+
+    - Plain single-tile grids (periodic and/or walled) are traced with `contourpy`.
+    - Single-tile grids carrying a bipolar/tripolar north **fold**
+      (`boundary={..., "Y": {"fold": ...}}`) are traced with `contourpy`, but
+      segments lying on the fold seam between two in-mask fold-neighbour cells are
+      dropped (they are interior, not boundary) and the surviving arcs are stitched
+      into loops by physical coincidence at the seam -- so a fold-straddling region
+      yields a single loop with no spurious seam boundary.
+    - Multi-tile grids (`face_connections`, e.g. lat-lon-cap or cubed-sphere) are
+      traced face-by-face and stitched across tile seams using the grid topology.
+
+    In every case a region yields closed boundary loops whose corners map cleanly to
+    velocity faces via `sectionate.uvindices_from_qindices`, so integrating a flux
+    over the boundary reproduces its convergence over the masked cells exactly.
 
     Returns lists with a common length equal to the number of discrete boundary
     loops. `f_c_list` holds the per-corner face index for multi-tile grids; its
-    entries are `None` for single-tile grids.
+    entries are `None` for single-tile grids (including fold grids).
 
     ARGUMENTS
     ---------
@@ -37,9 +47,22 @@ def grid_boundaries_from_mask(grid, mask):
     -------
     i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list
     """
-    if get_facedim(grid) is None:
-        return _single_tile_boundaries_from_mask(grid, mask)
-    return _multitile_boundaries_from_mask(grid, mask)
+    if get_facedim(grid) is not None:
+        return _multitile_boundaries_from_mask(grid, mask)
+    if _has_fold(grid):
+        return _fold_boundaries_from_mask(grid, mask)
+    return _single_tile_boundaries_from_mask(grid, mask)
+
+
+def _has_fold(grid):
+    """True if any axis carries a bipolar/tripolar north-fold boundary (xgcm#711)."""
+    for ax in grid.axes:
+        try:
+            if _is_fold_boundary(grid.axes[ax].boundary):
+                return True
+        except (AttributeError, TypeError):
+            pass
+    return False
 
 
 def _remap_contour(c, o):
@@ -87,6 +110,117 @@ def _single_tile_boundaries_from_mask(grid, mask):
         lons_c_list.append(lon_c.isel(idx).values[:-1])
         lats_c_list.append(lat_c.isel(idx).values[:-1])
 
+    return i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list
+
+
+def _fold_boundaries_from_mask(grid, mask):
+    """Trace mask boundaries on a single-tile grid carrying a bipolar north fold
+    (xgcm#711 ``boundary={..., "Y": {"fold": ...}}``).
+
+    Like the plain single-tile path this uses ``contourpy``, but it additionally
+    (1) drops boundary segments that lie on the fold seam between two in-mask
+    fold-neighbour cells -- they are interior to the region, not boundary -- using
+    the grid's own fold-aware halo (`_pad_center`), and (2) stitches the surviving
+    arcs into closed loops by physical coincidence at the seam. A region straddling
+    the fold therefore yields a single loop whose fold crossings are expressed
+    through *coincident* seam corners -- the representation `sectionate` collapses to
+    zero-length (dropped) faces -- so the boundary's velocity faces reproduce the
+    region's flux convergence exactly. `f_c` is ``None`` (single tile).
+    """
+    cdict = coord_dict(grid)
+    Xc, Yc = cdict["X"]["center"], cdict["Y"]["center"]
+    Xq, Yq = cdict["X"]["corner"], cdict["Y"]["corner"]
+    geo = get_geo_corners(grid)
+    lon_c = geo["X"].transpose(Yq, Xq).values
+    lat_c = geo["Y"].transpose(Yq, Xq).values
+    o = 1 - corner_offset(grid)
+
+    mask = mask.transpose(Yc, Xc)
+    Nyc, Nxc = mask.shape
+    m = mask.values
+    # fold-aware halo: a top-edge cell's north neighbour is its across-fold mirror
+    Mpad = _pad_center(grid, mask.astype(float)).transpose(Yc, Xc).values
+
+    def lockey(jq, iq):
+        # physical position on the unit sphere: robust to longitude wrap (a coincident
+        # seam corner may read 180 vs -180) and to the pole. Matches the physical
+        # coincidence `sectionate` itself uses to collapse zero-length seam faces.
+        la, lo = np.deg2rad(float(lat_c[jq, iq])), np.deg2rad(float(lon_c[jq, iq]))
+        return (round(np.cos(la) * np.cos(lo), 9),
+                round(np.cos(la) * np.sin(lo), 9),
+                round(np.sin(la), 9))
+
+    # --- Stage 1: contourpy -> arcs of KEEP segments (+ already-closed loops) ---
+    z = np.pad(m.astype(float), 1)
+    contours = contourpy.contour_generator(
+        np.arange(-1, Nxc + 1), np.arange(-1, Nyc + 1), z
+    ).create_contour(0.5)
+    arcs, closed = [], []
+    for c in contours:
+        ig, jg = _remap_contour(c, o)
+        ig, jg = ig[:-1], jg[:-1]  # open cyclic sequence
+        N = len(ig)
+        keep = np.ones(N, bool)
+        for k in range(N):
+            k2 = (k + 1) % N
+            (aj, ai), (bj, bi) = _SEG_CELLS[(int(ig[k2] - ig[k]), int(jg[k2] - jg[k]))]
+            # a segment is INTERNAL (a fold-seam face between two in-mask cells) iff
+            # both cells it separates are in-mask in the fold-aware halo
+            if (Mpad[jg[k] + aj, ig[k] + ai] == 1.0
+                    and Mpad[jg[k] + bj, ig[k] + bi] == 1.0):
+                keep[k] = False
+        if keep.all():
+            closed.append([(int(jg[k]), int(ig[k])) for k in range(N)]
+                          + [(int(jg[0]), int(ig[0]))])
+            continue
+        cut = np.where(~keep)[0]
+        start = (cut[-1] + 1) % N
+        run = []
+        for t in range(N):
+            k = (start + t) % N
+            if keep[k]:
+                if not run:
+                    run = [(int(jg[k]), int(ig[k]))]
+                run.append((int(jg[(k + 1) % N]), int(ig[(k + 1) % N])))
+            elif run:
+                arcs.append(run)
+                run = []
+        if run:
+            arcs.append(run)
+
+    # --- Stage 2: stitch arcs into loops by endpoint coincidence (seam collapses) ---
+    ends = {}
+    for ai, arc in enumerate(arcs):
+        ends.setdefault(lockey(*arc[0]), []).append((ai, True))
+        ends.setdefault(lockey(*arc[-1]), []).append((ai, False))
+    used = [False] * len(arcs)
+    loops = list(closed)
+    for a0 in range(len(arcs)):
+        if used[a0]:
+            continue
+        lp, ai, at_start = [], a0, True
+        while not used[ai]:
+            used[ai] = True
+            seg = arcs[ai] if at_start else arcs[ai][::-1]
+            lp.extend(seg)  # keep BOTH coincident seam corners at each junction
+            nxt = [(a, w) for (a, w) in ends.get(lockey(*seg[-1]), []) if not used[a]]
+            if not nxt:
+                break
+            ai, at_start = nxt[0]
+        if lp[0] != lp[-1]:
+            lp.append(lp[0])  # close (a coincident/zero-length edge sectionate drops)
+        loops.append(lp)
+
+    # --- Stage 3: emit index arrays (closed) + coordinates (open) ---
+    i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list = [], [], [], [], []
+    for lp in loops:
+        j_c = np.array([c[0] for c in lp], dtype=np.int64)
+        i_c = np.array([c[1] for c in lp], dtype=np.int64)
+        i_c_list.append(i_c)
+        j_c_list.append(j_c)
+        f_c_list.append(None)
+        lons_c_list.append(np.array([float(lon_c[c[0], c[1]]) for c in lp[:-1]]))
+        lats_c_list.append(np.array([float(lat_c[c[0], c[1]]) for c in lp[:-1]]))
     return i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list
 
 
