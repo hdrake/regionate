@@ -84,22 +84,31 @@ def test_gridded_region_from_mask():
         modequal(region.lats_c, np.array([-20., -20.,   0.,  20.,  20.,   0.]))
     )
     
-    # Zonal strip mask
+    # Zonal strip circling the globe: because the tracer stitches across the periodic-X
+    # seam, its boundary is TWO latitude circles (the top and bottom edges), each closed
+    # around the globe -- not one loop cut radially at the seam. (Loop order is not
+    # significant.)
     mask = xr.ones_like(grid._ds.geolon).where(np.abs(grid._ds.yh)<=10, 0.).astype(bool)
-    region = MaskRegions(mask, grid).region_dict[0]
-    assert np.all(
-        modequal(region.lons_c, np.array([360.,  60., 120., 180., 240., 300., 360., 360., 360., 300., 240., 180., 120.,  60., 360., 360.])) &
-        modequal(region.lats_c, np.array([-20., -20., -20., -20., -20., -20., -20.,   0.,  20.,  20.,  20., 20.,  20.,  20.,  20.,   0.]))
-    )
-    
-    # All but zonal strip mask (two separate regions outside)
-    region_inv = MaskRegions(~mask, grid).region_dict
-    assert np.all(
-        modequal(region_inv[0].lons_c, np.array([360.,  60., 120., 180., 240., 300., 360., 360., 360., 300., 240., 180., 120.,  60., 360., 360.])) &
-        modequal(region_inv[0].lats_c, np.array([-60., -60., -60., -60., -60., -60., -60., -40., -20., -20., -20., -20., -20., -20., -20., -40.])) &
-        modequal(region_inv[1].lons_c, np.array([360.,  60., 120., 180., 240., 300., 360., 360., 360., 300., 240., 180., 120.,  60., 360., 360.])) &
-        modequal(region_inv[1].lats_c, np.array([20.,   20.,  20.,  20.,  20.,  20.,  20.,  40.,  60.,  60.,  60.,  60.,  60.,  60.,  60.,  40.]))
-    )
+    regions = list(MaskRegions(mask, grid).region_dict.values())
+    assert len(regions) == 2
+    assert sorted(_latitude_circle_lat(r) for r in regions) == [-20., 20.]
+
+    # Its complement is two disconnected bands (north and south), each an annulus -> four
+    # latitude circles at +/-20 and +/-60. The +/-60 domain-wall circles survive because
+    # `_pad_center` pads a wall with NaN rather than replicating the edge cell (which
+    # would make the wall look like an in-mask seam and drop it).
+    regions_inv = list(MaskRegions(~mask, grid).region_dict.values())
+    assert len(regions_inv) == 4
+    assert sorted(_latitude_circle_lat(r) for r in regions_inv) == [-60., -20., 20., 60.]
 
 def modequal(a,b):
     return np.equal(np.mod(a, 360.), np.mod(b, 360.))
+
+def _latitude_circle_lat(region):
+    """Assert `region`'s boundary loop circles the globe at a single latitude, spanning
+    every longitude once (periodic-X seam stitched, no radial cut), and return that lat."""
+    lats = np.asarray(region.lats_c)
+    lons = set(np.mod(np.round(np.asarray(region.lons_c)), 360.).tolist())
+    assert np.allclose(lats, lats[0]), lats
+    assert lons == {0., 60., 120., 180., 240., 300.}, lons
+    return float(lats[0])
