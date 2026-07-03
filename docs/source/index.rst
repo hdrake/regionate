@@ -11,3 +11,4 @@ regionate: a package for creating xgcm-grid consistent regional masks and bounda
    examples/3_Arctic_heat_CM4p25
    examples/4_bounded_by_named_sections
    examples/5_ECCO_LLC90_multiface_regions
+   examples/6_idealized_corner_cases
