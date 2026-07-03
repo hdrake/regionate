@@ -184,8 +184,8 @@ def test_ecco_atlantic_basin_obeys_discrete_divergence_theorem():
     velocity face (summed over all loops) equals the flux convergence summed over
     the masked cells -- to machine precision, for an arbitrary transport field.
 
-    The cell-centred convergence is taken with xgcm's vector-aware
-    ``grid.diff_2d_vector``: across a 90-degree LLC seam the U-component rotates into
+    The cell-centred convergence is taken with xgcm's vector-aware ``grid.diff``
+    (``other_component=``): across a 90-degree LLC seam the U-component rotates into
     the neighbour's V-component, so differencing the components as independent scalars
     would be wrong there (this is expected xgcm behaviour, not a bug -- see xgcm's
     vector-padding API)."""
@@ -199,9 +199,11 @@ def test_ecco_atlantic_basin_obeys_discrete_divergence_theorem():
     umo = xr.DataArray(np.sin(g * 0.013) + 0.3, dims=("tile", "j", "i_g"))
     vmo = xr.DataArray(np.cos(g * 0.017) - 0.2, dims=("tile", "j_g", "i"))
 
-    div = grid.diff_2d_vector({"X": umo, "Y": vmo}, to="center",
-                              boundary="fill", fill_value=np.nan)
-    convergence = float((-(div["X"] + div["Y"])).where(mask, 0.).sum())
+    divU = grid.diff({"X": umo}, "X", other_component={"Y": vmo},
+                     to="center", boundary="fill", fill_value=np.nan)
+    divV = grid.diff({"Y": vmo}, "Y", other_component={"X": umo},
+                     to="center", boundary="fill", fill_value=np.nan)
+    convergence = float((-(divU + divV)).where(mask, 0.).sum())
 
     U, V = umo.transpose("tile", ...).values, vmo.transpose("tile", ...).values
     flux = 0.0
