@@ -199,9 +199,11 @@ def _ecco_convergence(grid, umo, vmo):
     face's missing edge slots to the *stored* velocity of that physical edge, so
     the convergence telescopes exactly: its global sum is identically zero and it
     is exactly consistent with boundary fluxes read from the same native arrays.
-    (xgcm's ``grid.diff(..., other_component=...)`` is NOT used here: its vector
-    halos pick the wrong component/slice across the rotated LLC seams on the
-    native 'left' staggering, so budgets built from it do not close there.)"""
+    (``padded_transports`` is used rather than xgcm's ``grid.diff(...,
+    other_component=...)`` because it is xgcm-independent and resolves edges
+    stored on no face -- walls, the lon=-115 cut, the 4th Arctic vertex -- which
+    no halo pad can supply a value for. xgcm#749 fixes the bare-``DataArray``
+    pad path across rotated/reversed seams; the dict form was always exact.)"""
     from sectionate.gridutils import outer_topology
     Uo, Vo = outer_topology(grid).padded_transports(
         umo.transpose("tile", "j", "i_g"), vmo.transpose("tile", "j_g", "i")
