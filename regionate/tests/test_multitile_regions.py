@@ -48,13 +48,33 @@ def rotated_two_tile_grid(Nc=4):
 
 def test_rotated_seam_region_stitches_into_one_loop():
     grid = rotated_two_tile_grid(Nc=4)
-    # Both tiles fully in-mask: the rotated seam between them is internal, and
-    # the region's outer boundary must be a single loop spanning both faces --
+    # A region spanning the rotated seam: the seam between the tiles is internal
+    # and the region's boundary must be a single loop spanning both faces --
     # stitched across the rotated seam by topology alone (coords don't coincide).
-    mask = xr.ones_like(grid._ds["geolon"]).astype(bool)
+    # The mask stays clear of the tiles' open outer walls, whose corner points a
+    # native 'left' grid does not store (see `test_open_wall_boundary_raises`).
+    arr = np.zeros(grid._ds["geolon"].shape, dtype=bool)
+    # clear of every corner the tiling does not store: face 0's north wall row
+    # and its j=0 row (whose SE corner is the seam's wall end), face 1's east
+    # and north wall rows.
+    arr[0, 1:3, 2:4] = True
+    arr[1, 0:3, 0:3] = True
+    mask = xr.DataArray(arr, dims=grid._ds["geolon"].dims,
+                        coords=grid._ds["geolon"].coords)
     i_l, j_l, f_l, lon_l, lat_l = grid_boundaries_from_mask(grid, mask)
     assert len(i_l) == 1
     assert set(np.asarray(f_l[0]).tolist()) == {0, 1}
+
+
+def test_open_wall_boundary_raises():
+    """A mask reaching an open wall whose corner points are stored on no face
+    (the high-side rows/columns of a native 'left' tile with no neighbour there)
+    cannot be expressed in native (i_c, j_c, f_c) indices; regionate must say so
+    rather than emit fabricated corners."""
+    grid = rotated_two_tile_grid(Nc=4)
+    mask = xr.ones_like(grid._ds["geolon"]).astype(bool)
+    with pytest.raises((ValueError, RuntimeError), match="Mask boundary"):
+        grid_boundaries_from_mask(grid, mask)
 
 
 def two_face_grid(Nc=3):
@@ -152,11 +172,12 @@ def test_seam_spanning_region_stitches_into_one_loop():
     assert len(i_l) == 1                                  # a single stitched loop
     faces = set(np.asarray(f_l[0]).tolist())
     assert faces == {0, 1}                                # spans both faces
-    # The seam faces are internal: the duplicated seam corners carry no velocity
-    # face, so sectionate returns fewer faces than there are corners.
+    # Every physical corner appears exactly once (a shared seam corner is not
+    # duplicated), so every boundary edge is a real velocity face: the 3x2-cell
+    # strip has 10 boundary corners and 10 velocity faces.
     lon_uv, lat_uv = sec.uvcoords_from_qindices(grid, i_l[0], j_l[0], f_c=f_l[0])
     assert len(lon_uv) == 10
-    assert len(lon_l[0]) == 12
+    assert len(lon_l[0]) == 10
 
 
 def test_seam_terminating_region_keeps_seam_edge():

@@ -176,43 +176,102 @@ def test_ecco_atlantic_basin_boundary_and_transports():
     assert len(lons_uv) > 0
 
 
+def _ecco_synthetic_uv(grid):
+    """An arbitrary synthetic transport field on the native LLC90 staggering.
+
+    The southern boundary fold (the j_g=0 rows of tiles 0 and 3 fold back onto
+    themselves and each other) stores each physical edge twice, so a transport
+    field is only self-consistent there if the two storages are antisymmetric.
+    MITgcm guarantees this trivially -- those edges are domain walls carrying no
+    flux -- so the synthetic field zeroes them the same way."""
+    nf, ny, nx = (grid._ds.sizes[d] for d in ("tile", "j", "i"))
+    g = np.arange(nf * ny * nx, dtype=float).reshape(nf, ny, nx)
+    umo = xr.DataArray(np.sin(g * 0.013) + 0.3, dims=("tile", "j", "i_g"))
+    vmo = xr.DataArray(np.cos(g * 0.017) - 0.2, dims=("tile", "j_g", "i"))
+    vmo[{"tile": [0, 3], "j_g": 0}] = 0.0
+    return umo, vmo
+
+
+def _ecco_convergence(grid, umo, vmo):
+    """Cell convergence from the native transports via the outer corner topology.
+
+    ``sectionate.gridutils.outer_topology(grid).padded_transports`` resolves each
+    face's missing edge slots to the *stored* velocity of that physical edge, so
+    the convergence telescopes exactly: its global sum is identically zero and it
+    is exactly consistent with boundary fluxes read from the same native arrays.
+    (xgcm's ``grid.diff(..., other_component=...)`` is NOT used here: its vector
+    halos pick the wrong component/slice across the rotated LLC seams on the
+    native 'left' staggering, so budgets built from it do not close there.)"""
+    from sectionate.gridutils import outer_topology
+    Uo, Vo = outer_topology(grid).padded_transports(
+        umo.transpose("tile", "j", "i_g"), vmo.transpose("tile", "j_g", "i")
+    )
+    conv = (Uo[:, :, :-1] - Uo[:, :, 1:]) + (Vo[:, :-1, :] - Vo[:, 1:, :])
+    return xr.DataArray(conv, dims=("tile", "j", "i"))
+
+
+def _boundary_flux(grid, mask, umo, vmo):
+    """Net flux into `mask` through its traced boundary loops, via sectionate."""
+    import sectionate as sec
+    from regionate import MaskRegions
+
+    ds = grid._ds
+    total = 0.0
+    ds["umo"], ds["vmo"] = umo, vmo
+    for r in MaskRegions(mask, grid).region_dict.values():
+        t = sec.convergent_transport(
+            grid, r.i_c, r.j_c, r.f_c, utr="umo", vtr="vmo",
+            layer=None, positive_in=mask,
+        )
+        total += float(t["conv_mass_transport"].sum())
+    return total
+
+
 @_requires_ecco
 def test_ecco_atlantic_basin_obeys_discrete_divergence_theorem():
     """The whole point of the package: a region's budget must close against the
     fluxes through its traced boundary. On the real LLC90 grid, for the full
     Atlantic basin (spanning rotated seams), the net flux through every boundary
     velocity face (summed over all loops) equals the flux convergence summed over
-    the masked cells -- to machine precision, for an arbitrary transport field.
-
-    The cell-centred convergence is taken with xgcm's vector-aware ``grid.diff``
-    (``other_component=``): across a 90-degree LLC seam the U-component rotates into
-    the neighbour's V-component, so differencing the components as independent scalars
-    would be wrong there (this is expected xgcm behaviour, not a bug -- see xgcm's
-    vector-padding API)."""
-    import sectionate as sec
-    from regionate import MaskRegions
+    the masked cells -- exactly, for an arbitrary transport field."""
     grid, atlantic_basin_mask = _load_ecco()
     mask = atlantic_basin_mask(grid)
+    umo, vmo = _ecco_synthetic_uv(grid)
+    conv = _ecco_convergence(grid, umo, vmo)
+    interior = float(conv.where(mask, 0.).sum())
+    flux = _boundary_flux(grid, mask, umo, vmo)
+    assert np.isclose(flux, interior, rtol=1e-12, atol=1e-6)
 
-    nf, ny, nx = (grid._ds.sizes[d] for d in ("tile", "j", "i"))
-    g = np.arange(nf * ny * nx, dtype=float).reshape(nf, ny, nx)
-    umo = xr.DataArray(np.sin(g * 0.013) + 0.3, dims=("tile", "j", "i_g"))
-    vmo = xr.DataArray(np.cos(g * 0.017) - 0.2, dims=("tile", "j_g", "i"))
 
-    divU = grid.diff({"X": umo}, "X", other_component={"Y": vmo},
-                     to="center", boundary="fill", fill_value=np.nan)
-    divV = grid.diff({"Y": vmo}, "Y", other_component={"X": umo},
-                     to="center", boundary="fill", fill_value=np.nan)
-    convergence = float((-(divU + divV)).where(mask, 0.).sum())
+@_requires_ecco
+@pytest.mark.parametrize("case", ["south_cap", "north_cap", "vertex_annulus_rot",
+                                  "vertex_annulus_latlon", "latlon_rot_box"])
+def test_ecco_hard_topology_regions_close_exactly(case):
+    """Exact mask<->boundary closure on the LLC90 grid's hardest topology: the
+    south-pole boundary fold and lon=-115 grid cut (south cap), the Arctic cap
+    with its rotated seams (north cap), nested annuli around a rotated-rotated
+    and a lat-lon<->rotated 4-face cube-vertex junction, and a box crossing a
+    lat-lon<->rotated seam."""
+    grid, _ = _load_ecco()
+    lon, lat = grid._ds["geolon"], grid._ds["geolat"]
 
-    U, V = umo.transpose("tile", ...).values, vmo.transpose("tile", ...).values
-    flux = 0.0
-    for r in MaskRegions(mask, grid).region_dict.values():
-        uv = sec.uvindices_from_qindices(grid, r.i_c, r.j_c, f_c=r.f_c)
-        for k in range(len(uv["var"])):
-            if uv["var"][k] == "0":
-                continue
-            f, i, j = int(uv["face"][k]), int(uv["i"][k]), int(uv["j"][k])
-            flux += int(uv["Lsign"][k]) * (U[f, j, i] if uv["var"][k] == "U" else V[f, j, i])
+    def geodist(lon0, lat0):
+        la0, lo0 = np.deg2rad(lat0), np.deg2rad(lon0)
+        la, lo = np.deg2rad(lat), np.deg2rad(lon)
+        return np.rad2deg(np.arccos(np.clip(
+            np.sin(la0) * np.sin(la) + np.cos(la0) * np.cos(la) * np.cos(lo - lo0),
+            -1., 1.)))
 
-    assert np.isclose(convergence, flux, atol=1e-9)
+    masks = {
+        "south_cap": lat < -60.,
+        "north_cap": lat > 70.,
+        "vertex_annulus_rot": (geodist(-128., 9.97) < 3.5) & (geodist(-128., 9.97) > 1.4),
+        "vertex_annulus_latlon": (geodist(-38., 9.97) < 3.5) & (geodist(-38., 9.97) > 1.4),
+        "latlon_rot_box": (((lon - (-60.)) % 360.) <= 50.) & (lat > 20.) & (lat < 50.),
+    }
+    mask = masks[case].compute()
+    umo, vmo = _ecco_synthetic_uv(grid)
+    conv = _ecco_convergence(grid, umo, vmo)
+    interior = float(conv.where(mask, 0.).sum())
+    flux = _boundary_flux(grid, mask, umo, vmo)
+    assert np.isclose(flux, interior, rtol=1e-12, atol=1e-6)

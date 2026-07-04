@@ -17,8 +17,7 @@ from sectionate.gridutils import (
     get_geo_corners,
     coord_dict,
     corner_offset,
-    build_neighbor_maps,
-    NEIGHBOR_DIRECTIONS,
+    outer_topology,
 )
 
 
@@ -39,9 +38,11 @@ def grid_boundaries_from_mask(grid, mask):
 
     - single-tile (periodic and/or walled, incl. the fold) -- stitched by physical
       coincidence at the seam; face index `f_c` is ``None``;
-    - multi-tile (`face_connections`) -- stitched by cell-set + grid topology, returning
-      a per-corner face index `f_c` (needed for rotated/reversed seams whose two sides
-      do not share coordinates).
+    - multi-tile (`face_connections`) -- stitched on the grid's outer (shared-corner)
+      lattice from `sectionate.gridutils.outer_topology`: every traced corner resolves
+      to a physical corner *node*, arcs join by node identity (uniform across rotated
+      and reversed seams, cube-vertex junctions, and grid cuts/folds), and each node is
+      emitted as the native corner that stores it, with its face index `f_c`.
 
     In every case the returned loops' corners map cleanly to velocity faces via
     `sectionate.uvindices_from_qindices`, so integrating a flux over the boundary
@@ -125,7 +126,10 @@ def _trace_and_drop(grid, mask):
     facedim = get_facedim(grid)
     cdict = coord_dict(grid)
     Xc, Yc = cdict["X"]["center"], cdict["Y"]["center"]
-    o = 1 - corner_offset(grid)
+    # Single-tile: corner indices in the native frame. Multi-tile: always in the
+    # outer-lattice frame (`o=1`, corner k between cells k-1 and k), which is what
+    # `outer_topology`'s node grid is indexed by, whatever the native staggering.
+    o = 1 if facedim is not None else 1 - corner_offset(grid)
 
     if facedim is None:
         mask = mask.transpose(Yc, Xc)
@@ -237,104 +241,108 @@ def _single_tile_boundaries_from_mask(grid, arcs, closed):
 
 
 def _multitile_boundaries_from_mask(grid, arcs, closed, nf, Nyc, Nxc):
-    """Multi-tile back-end: stitch arcs into loops across tile seams using the grid's
-    `face_connections` topology, returning a per-corner face index `f_c`. Handles
-    rotated/reversed seams whose two sides do not share coordinates (so coincidence
-    stitching would fail) and produces the `f_c` sectionate's multi-tile transport
-    needs."""
-    facedim = get_facedim(grid)
-    cdict = coord_dict(grid)
-    Xc, Yc = cdict["X"]["center"], cdict["Y"]["center"]
-    Xq, Yq = cdict["X"]["corner"], cdict["Y"]["corner"]
-    geo = get_geo_corners(grid)
-    lon_c = geo["X"].transpose(facedim, Yq, Xq).values
-    lat_c = geo["Y"].transpose(facedim, Yq, Xq).values
-    maps = build_neighbor_maps(grid, geo)
+    """Multi-tile back-end: stitch the traced arcs into loops on the grid's outer
+    (shared-corner) corner topology (`sectionate.gridutils.outer_topology`).
 
-    cid = xr.DataArray(
-        np.arange(nf * Nyc * Nxc, dtype=float).reshape(nf, Nyc, Nxc), dims=(facedim, Yc, Xc)
-    )
-    Cpad = _pad_center(grid, cid).transpose(facedim, ..., Yc, Xc).values
+    Every traced corner -- given by `_trace_and_drop` in the outer-lattice frame
+    ``(f, jg, ig)`` -- resolves to a physical corner *node*, which is uniform
+    across rotated/reversed seams, 4-face cube-vertex junctions, the pole, and
+    grid cuts/folds. Stitching is then simply:
 
-    def cellset(f, jg, ig):
-        v = (Cpad[f, jg, ig], Cpad[f, jg, ig + 1], Cpad[f, jg + 1, ig], Cpad[f, jg + 1, ig + 1])
-        return frozenset(None if np.isnan(x) else int(x) for x in v)
+    1. decompose arcs into directed corner-to-corner segments of node pairs
+       (dropping zero-length segments between coincident corners, e.g. a fold
+       pleat tip);
+    2. remove *both* copies of any edge traced twice -- an edge is traced once
+       per adjacent in-mask cell, so a double appearance means in-mask cells on
+       both sides of an undeclared seam (the two coincident sides of a grid
+       cut or boundary fold, e.g. under Antarctica on the LLC grid): interior,
+       not boundary;
+    3. chain the surviving fragments end-to-end by node identity into closed
+       loops;
+    4. emit each node as the native corner that stores it, `(i_c, j_c, f_c)`.
+    """
+    ot = outer_topology(grid)
+    node_id, node_native = ot.node_id, ot.node_native
 
-    def neighbours(f, j, i):
-        out = []
-        for d in NEIGHBOR_DIRECTIONS:
-            fm, jm, im = maps[d]
-            out.append((int(fm[f, j, i]), int(jm[f, j, i]), int(im[f, j, i])))
-        return out
+    def node_of(f, jg, ig):
+        n = int(node_id[f, jg, ig])
+        if n < 0:
+            raise ValueError(
+                f"Mask boundary passes through corner slot (face={f}, j={jg}, i={ig}) "
+                "that could not be resolved to a physical grid corner."
+            )
+        return n
 
-    # --- Stitch arcs into face-local loops by cell-set at endpoints ---
-    ends = {}
-    for ai, arc in enumerate(arcs):
-        for node in (arc[0], arc[-1]):
-            ends.setdefault(cellset(*node), []).append(ai)
-    used = [False] * len(arcs)
-    facelocal = list(closed)
-    for a0 in range(len(arcs)):
-        if used[a0]:
+    # --- 1. directed segments as node pairs (arcs and fully-closed contours) ---
+    fragments = []  # each: list of node ids, len >= 2
+    for arc in arcs:
+        fragments.append([node_of(*c) for c in arc])
+    for lp in closed:
+        seq = [node_of(*c) for c in lp]
+        fragments.append(seq + [seq[0]])  # close the open-cyclic contour
+
+    segments = []
+    for frag in fragments:
+        for a, b in zip(frag[:-1], frag[1:]):
+            if a != b:  # coincident corners (zero-length edge) carry no boundary
+                segments.append((a, b))
+
+    # --- 2. annihilate edges traced from both sides: interior to a cut/fold ---
+    count = {}
+    for a, b in segments:
+        key = (min(a, b), max(a, b))
+        count[key] = count.get(key, 0) + 1
+    if any(c > 2 for c in count.values()):
+        raise RuntimeError(
+            "A boundary edge was traced more than twice; the mask topology is "
+            "inconsistent with the grid's corner topology."
+        )
+    kept = [(a, b) for (a, b) in segments if count[(min(a, b), max(a, b))] == 1]
+
+    # --- 3. chain directed segments into closed loops by node identity ---
+    # Each surviving directed segment is used exactly once. Segments inherit
+    # contourpy's orientation (the in-mask side is consistently to one side),
+    # so following out-segments from each end node reproduces closed loops.
+    out_by_node = {}
+    for k, (a, b) in enumerate(kept):
+        out_by_node.setdefault(a, []).append(k)
+    used = [False] * len(kept)
+    loops = []
+    for k0 in range(len(kept)):
+        if used[k0]:
             continue
-        lp, ai, from_start = [], a0, True
-        while not used[ai]:
-            used[ai] = True
-            seg = arcs[ai] if from_start else arcs[ai][::-1]
-            lp.extend(seg[:-1])
-            tail = seg[-1]
-            ks = cellset(*tail)
-            nxt = [a for a in ends.get(ks, []) if not used[a]]
+        used[k0] = True
+        a0, b = kept[k0]
+        lp = [a0, b]
+        while b != a0:
+            nxt = [k for k in out_by_node.get(b, []) if not used[k]]
             if not nxt:
-                lp.append(tail)
-                break
-            ai = nxt[0]
-            from_start = cellset(*arcs[ai][0]) == ks
-        facelocal.append(lp)
+                raise RuntimeError(
+                    "Mask boundary does not close on the grid's corner topology "
+                    f"(dead end at corner node {b})."
+                )
+            k = nxt[0]
+            used[k] = True
+            b = kept[k][1]
+            lp.append(b)
+        loops.append(lp)
 
-    # --- Convert face-local corners to native (f, j, i), grid-adjacent ---
-    # native corner-array shape ('outer' has Nc+1 corners, 'left'/'right' have Nc)
-    Nyq, Nxq = lon_c.shape[1], lon_c.shape[2]
-    seed = {}
-    for f in range(nf):
-        for jn in range(Nyq):
-            for inx in range(Nxq):
-                seed.setdefault(cellset(f, jn, inx), (f, jn, inx))
-
+    # --- 4. native corners and coordinates per node ---
     i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list = [], [], [], [], []
-    for lp in facelocal:
-        targets = [cellset(*c) for c in lp]
-        prev = seed.get(targets[0])
-        if prev is None:
-            continue
-        nat = [prev]
-        for k in range(1, len(targets)):
-            cands = [prev] + neighbours(*prev)
-            match = [c for c in cands if cellset(c[0], c[1], c[2]) == targets[k]]
-            prev = match[0] if match else seed.get(targets[k], prev)
-            nat.append(prev)
-
-        # Repair seam crossings the cell-set match over-merged: where consecutive
-        # corners are not grid-adjacent, insert the corner where they meet (the
-        # neighbour of A that lies on B's tile and neighbours B).
-        rep = []
-        for k in range(len(nat)):
-            a = nat[k]
-            rep.append(a)
-            b = nat[(k + 1) % len(nat)]
-            if a != b and b not in neighbours(*a):
-                bridge = [c for c in neighbours(*a) if c[0] == b[0] and c in neighbours(*b)]
-                if bridge:
-                    rep.append(bridge[0])
-
-        seq = rep if rep[-1] == rep[0] else rep + [rep[0]]   # close exactly once
-        f_c = np.array([c[0] for c in seq], dtype=np.int64)
-        j_c = np.array([c[1] for c in seq], dtype=np.int64)
-        i_c = np.array([c[2] for c in seq], dtype=np.int64)
-        i_c_list.append(i_c)
-        j_c_list.append(j_c)
-        f_c_list.append(f_c)
-        lons_c_list.append(np.array([float(lon_c[c[0], c[1], c[2]]) for c in seq[:-1]]))
-        lats_c_list.append(np.array([float(lat_c[c[0], c[1], c[2]]) for c in seq[:-1]]))
+    for lp in loops:
+        nat = node_native[lp]
+        if (nat[:, 0] < 0).any():
+            k = int(np.where(nat[:, 0] < 0)[0][0])
+            raise ValueError(
+                "Mask boundary passes through a grid corner that is not stored on "
+                f"any face (near lon={ot.node_lon[lp[k]]:.2f}, "
+                f"lat={ot.node_lat[lp[k]]:.2f}); it cannot be expressed in native "
+                "(i_c, j_c, f_c) indices."
+            )
+        f_c_list.append(nat[:, 0].astype(np.int64))
+        j_c_list.append(nat[:, 1].astype(np.int64))
+        i_c_list.append(nat[:, 2].astype(np.int64))
+        lons_c_list.append(ot.node_lon[lp[:-1]].astype(float))
+        lats_c_list.append(ot.node_lat[lp[:-1]].astype(float))
 
     return i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list
