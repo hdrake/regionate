@@ -26,13 +26,14 @@ requirements:
     - geopandas
     - shapely
     # Multi-tile (lat-lon-cap / cap) padding needs the face_connections
-    # halo-padding fix (hdrake/xgcm@fix-faceconnection-pad-712); floor stays 0.9.0.
+    # halo-padding fix + north-fold/vector-pad fixes, consolidated on
+    # hdrake/xgcm@dev-v1.0.0; floor stays 0.9.0.
     - xgcm >=0.9.0
     - regionmask
     - contourpy
     # Needs the topology-driven sectionate API + 'left'/rotated-seam corner-neighbour
-    # fix (MOM6-community/sectionate#47); the PR branch self-reports 0.3.3, so the
-    # floor stays there until release.
+    # fix, consolidated on hdrake/sectionate@topology-driven-neighbors; the branch
+    # self-reports 0.3.3, so the floor stays there until release.
     - sectionate >=0.3.3
 
 test:

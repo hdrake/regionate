@@ -40,7 +40,7 @@ def test_mom6_global_box_mask_boundary_consistency():
         ds,
         coords={"X": {"center": "xh", "outer": "xq"},
                 "Y": {"center": "yh", "outer": "yq"}},
-        boundary={"X": "periodic", "Y": "extend"},
+        padding={"X": "periodic", "Y": "extend"},
         autoparse_metadata=False,
     )
     lons = np.array([-40., -10., -10., -40.])
@@ -89,9 +89,9 @@ def test_mom6_arctic_fold_region_is_single_and_closes_budget():
         return [r for r in MaskRegions(mask, grid).region_dict.values()
                 if len(r.i_c) > 100]
 
-    grid_extend = xgcm.Grid(ds, coords=coords, boundary={"X": "periodic", "Y": "extend"},
+    grid_extend = xgcm.Grid(ds, coords=coords, padding={"X": "periodic", "Y": "extend"},
                             autoparse_metadata=False)
-    grid_fold = xgcm.Grid(ds, coords=coords, boundary={"X": "periodic", "Y": {"fold": "corner"}},
+    grid_fold = xgcm.Grid(ds, coords=coords, padding={"X": "periodic", "Y": {"fold": "corner"}},
                           autoparse_metadata=False)
 
     big_extend = large(grid_extend)

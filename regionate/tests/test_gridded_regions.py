@@ -26,7 +26,7 @@ def initialize_spherical_grid(N=6):
         'X': {'outer': 'xq', 'center': 'xh'},
         'Y': {'outer': 'yq', 'center': 'yh'}
     }
-    grid = xgcm.Grid(ds, coords=coords, boundary={"X":"periodic", "Y":"extend"}, autoparse_metadata=False)
+    grid = xgcm.Grid(ds, coords=coords, padding={"X":"periodic", "Y":"extend"}, autoparse_metadata=False)
     return grid
 
 def test_gridded_region_from_boundary():

@@ -1,5 +1,6 @@
 """Boundary tracing on a single-tile grid carrying a bipolar/tripolar north fold
-(xgcm ``boundary={..., "Y": {"fold": ...}}``, requires xgcm#711).
+(xgcm ``padding={..., "Y": {"fold": ...}}``, requires the north-fold boundary on
+hdrake/xgcm@dev-v1.0.0).
 
 The northern edge folds onto itself: top-row cell ``i`` is the fold-neighbour of
 cell ``Nx-1-i`` (corner pivot, mirror about ``x=0``). A region straddling the fold
@@ -42,7 +43,7 @@ def fold_grid(Nx=6, Ny=4):
     return xgcm.Grid(
         ds, coords={"X": {"center": "xh", "outer": "xq"},
                     "Y": {"center": "yh", "outer": "yq"}},
-        boundary={"X": "periodic", "Y": {"fold": "corner"}}, autoparse_metadata=False)
+        padding={"X": "periodic", "Y": {"fold": "corner"}}, autoparse_metadata=False)
 
 
 def make_mask(grid, cells):

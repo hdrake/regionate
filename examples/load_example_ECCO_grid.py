@@ -98,7 +98,7 @@ def load_ECCO_LLC90_grid(data_dir="../data"):
     ds = ds.rename({"XC": "geolon", "YC": "geolat",
                     "XG": "geolon_c", "YG": "geolat_c"})
     return xgcm.Grid(
-        ds, periodic=False, autoparse_metadata=False,
+        ds, padding="fill", autoparse_metadata=False,
         coords={"X": {"center": "i", "left": "i_g"},
                 "Y": {"center": "j", "left": "j_g"}},
         face_connections=LLC90_FACE_CONNECTIONS,

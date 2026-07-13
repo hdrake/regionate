@@ -26,7 +26,7 @@ def grid_boundaries_from_mask(grid, mask):
 
     The tracer follows the grid's own topology, so it stitches a region across every
     seam its `xgcm.Grid` declares -- periodic axes, the bipolar/tripolar north
-    **fold** (`boundary={..., "Y": {"fold": ...}}`), and multi-tile `face_connections`
+    **fold** (`padding={..., "Y": {"fold": ...}}`), and multi-tile `face_connections`
     (lat-lon-cap / cubed-sphere). A region that wraps a seam therefore yields a single
     seam-consistent boundary rather than pieces split at the seam with spurious seam
     faces.
@@ -95,9 +95,9 @@ def _pad_center(grid, da):
     `sectionate.gridutils.build_neighbor_maps`."""
     def _seam_or_fill(b):
         return b if (b == "periodic" or _is_fold_boundary(b)) else "fill"
-    boundary = {ax: _seam_or_fill(grid.axes[ax].boundary) for ax in grid.axes}
-    boundary_width = {ax: (1, 1) for ax in grid.axes}
-    return pad(da, grid, boundary_width, boundary=boundary, fill_value=np.nan)
+    padding = {ax: _seam_or_fill(grid.axes[ax].padding) for ax in grid.axes}
+    padding_width = {ax: (1, 1) for ax in grid.axes}
+    return pad(da, grid, padding_width, padding=padding, fill_value=np.nan)
 
 
 # Cells separated by a directed corner segment (ig,jg)->(ig+di,jg+dj), in the

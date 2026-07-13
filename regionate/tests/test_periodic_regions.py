@@ -33,7 +33,7 @@ def periodic_grid(Nx=8, Ny=5):
     return xgcm.Grid(
         ds, coords={"X": {"center": "xh", "outer": "xq"},
                     "Y": {"center": "yh", "outer": "yq"}},
-        boundary={"X": "periodic", "Y": "extend"}, autoparse_metadata=False)
+        padding={"X": "periodic", "Y": "extend"}, autoparse_metadata=False)
 
 
 def make_mask(grid, cells):

@@ -40,7 +40,7 @@ def rotated_two_tile_grid(Nc=4):
     grid_left = xgcm.Grid(
         ds, coords={"X": {"center": "i", "left": "i_g"},
                     "Y": {"center": "j", "left": "j_g"}},
-        boundary="fill", fill_value=np.nan,
+        padding="fill", fill_value=np.nan,
         face_connections=fc, autoparse_metadata=False,
     )
     return grid_left
@@ -110,7 +110,7 @@ def two_face_grid(Nc=3):
         ds,
         coords={"X": {"outer": "xq", "center": "xh"},
                 "Y": {"outer": "yq", "center": "yh"}},
-        boundary="fill", fill_value=np.nan,
+        padding="fill", fill_value=np.nan,
         face_connections=fc, autoparse_metadata=False,
     )
 

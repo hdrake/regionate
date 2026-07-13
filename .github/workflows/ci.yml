@@ -43,21 +43,19 @@ jobs:
           # TODO: drop these explicit installs once their upstreams release the required
           # fixes to PyPI; the floors in pyproject.toml will then suffice.
           # (2) the topology-driven sectionate API + the outer-lattice multi-tile corner
-          #     topology / exact padded transports (MOM6-community/sectionate#48, which
-          #     builds on #47). This is the branch that gives the most complete multi-tile
-          #     boundary treatment, so regionate is pinned to it rather than #47.
-          python -m pip install "sectionate @ git+https://github.com/MOM6-community/sectionate.git@refs/pull/48/head"
+          #     topology / exact padded transports. hdrake/sectionate@topology-driven-neighbors
+          #     is the consolidated dev branch carrying this work (formerly PRs #47/#48),
+          #     and gives the most complete multi-tile boundary treatment.
+          python -m pip install "sectionate @ git+https://github.com/hdrake/sectionate.git@topology-driven-neighbors"
           python -m pip install -e .
-          # (1) the xgcm bipolar north-fold boundary (xgcm#711, tripolar-north-fold), which
-          #     also contains the face_connections halo-padding fix (xgcm#712) needed for
-          #     correct multi-tile (lat-lon-cap / cap) padding, plus the bare-DataArray
-          #     other_component vector-pad fix (xgcm#749) so vector diff/interp is correct
-          #     across rotated/reversed seams. The combined branch tripolar-north-fold-vectorpad
-          #     is tripolar-north-fold with xgcm#749 cherry-picked on top. Installed LAST with
-          #     --force-reinstall --no-deps: setuptools_scm reports 0.1.devN on this branch
-          #     (< the xgcm>=0.9.0 floors above), so installing it earlier gets clobbered by
-          #     a PyPI xgcm reinstall pulled in to satisfy those floors.
-          python -m pip install --force-reinstall --no-deps "xgcm @ git+https://github.com/hdrake/xgcm.git@tripolar-north-fold-vectorpad"
+          # (1) the xgcm dev-v1.0.0 branch, which consolidates the bipolar north-fold
+          #     boundary (formerly xgcm#711), the face_connections halo-padding fix
+          #     (xgcm#712) needed for correct multi-tile (lat-lon-cap / cap) padding, and
+          #     the bare-DataArray other_component vector-pad fix (xgcm#749) so vector
+          #     diff/interp is correct across rotated/reversed seams. Installed LAST with
+          #     --force-reinstall --no-deps so the git build wins over any PyPI xgcm that
+          #     an earlier step pulled in to satisfy the xgcm>=0.9.0 floors above.
+          python -m pip install --force-reinstall --no-deps "xgcm @ git+https://github.com/hdrake/xgcm.git@dev-v1.0.0"
       - name: Conda list information
         run: |
           conda env list
