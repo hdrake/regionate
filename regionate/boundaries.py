@@ -100,6 +100,109 @@ def _pad_center(grid, da):
     return pad(da, grid, padding_width, padding=padding, fill_value=np.nan)
 
 
+def connected_components(grid, mask):
+    """Label a boolean cell `mask` into connected components on the grid's own
+    seam-aware 4-adjacency.
+
+    Two in-mask cells belong to the same component iff they are edge-neighbours
+    *through the grid's topology*: periodic axes, the north fold, and multi-tile
+    `face_connections` all supply real across-seam neighbours, exactly as they do
+    for the boundary tracer -- both read the same topology-aware halo,
+    `_pad_center`. A planar labeller (e.g. ``scipy.ndimage.label``) would instead
+    wrongly split a component that wraps a seam and merge cells that are only
+    planar-adjacent across a wall, so we label on the padded halo instead.
+
+    The id field padded here holds each cell's *global index*, so every padded
+    halo slot carries the real across-seam neighbour's id (and NaN at a genuine
+    wall). Two in-mask cells adjacent through the halo are then unioned; component
+    indices are assigned in first-appearance (flat) order and are otherwise not
+    significant.
+
+    ARGUMENTS
+    ---------
+    grid : `xgcm.Grid` instance
+    mask : `xr.DataArray` of bool over the grid's tracer-center dims
+
+    RETURNS
+    -------
+    labels : `xr.DataArray` of int over the same dims as `mask` (transposed to the
+        grid's center dims); each in-mask cell holds its component index in
+        ``range(ncomp)`` and every out-of-mask cell holds ``-1``.
+    ncomp : int
+        The number of connected components (0 for an all-False mask).
+    """
+    facedim = get_facedim(grid)
+    cdict = coord_dict(grid)
+    Xc, Yc = cdict["X"]["center"], cdict["Y"]["center"]
+
+    if facedim is None:
+        m = mask.transpose(Yc, Xc).astype(bool)
+        mvals = m.values[None]  # synthetic single face
+    else:
+        m = mask.transpose(facedim, Yc, Xc).astype(bool)
+        mvals = m.values
+    nf, Nyc, Nxc = mvals.shape
+    size = nf * Nyc * Nxc
+
+    # A center-point id field: each cell holds its own global index. Padding it with
+    # the grid's topology puts the *neighbour's* id in each halo slot (NaN at walls).
+    ids = np.arange(size, dtype=float).reshape(nf, Nyc, Nxc)
+    ids_da = xr.DataArray(ids.reshape(m.shape), dims=m.dims, coords=m.coords)
+    if facedim is None:
+        Ip = _pad_center(grid, ids_da).transpose(Yc, Xc).values[None]
+    else:
+        Ip = _pad_center(grid, ids_da).transpose(facedim, Yc, Xc).values
+
+    mflat = mvals.reshape(-1)
+    self_id = np.arange(size, dtype=np.int64)
+    # native cell (f,j,i) sits at Ip[f, j+1, i+1]; its four edge-neighbours:
+    neighbours = (
+        Ip[:, 1:-1, 2:],   # east
+        Ip[:, 1:-1, :-2],  # west
+        Ip[:, 2:, 1:-1],   # north
+        Ip[:, :-2, 1:-1],  # south
+    )
+
+    parent = self_id.copy()
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)
+
+    for nbr in neighbours:
+        n = nbr.reshape(-1)
+        valid = mflat & ~np.isnan(n)            # self in-mask, neighbour exists
+        s_v = self_id[valid]
+        n_v = n[valid].astype(np.int64)
+        both = mflat[n_v]                        # neighbour also in-mask
+        for a, b in zip(s_v[both].tolist(), n_v[both].tolist()):
+            union(a, b)
+
+    labels_flat = np.full(size, -1, dtype=np.int64)
+    order, ncomp = {}, 0
+    for i in np.flatnonzero(mflat).tolist():
+        r = find(i)                              # root is the min id, always in-mask
+        c = order.get(r)
+        if c is None:
+            c = ncomp
+            order[r] = c
+            ncomp += 1
+        labels_flat[i] = c
+
+    labels_arr = labels_flat.reshape(nf, Nyc, Nxc)
+    if facedim is None:
+        labels_arr = labels_arr[0]
+    labels = xr.DataArray(labels_arr, dims=m.dims, coords=m.coords)
+    return labels, ncomp
+
+
 # Cells separated by a directed corner segment (ig,jg)->(ig+di,jg+dj), in the
 # padded-center index frame where corner (jg,ig) straddles cells [jg:jg+2, ig:ig+2].
 _SEG_CELLS = {
