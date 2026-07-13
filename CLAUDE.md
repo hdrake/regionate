@@ -6,6 +6,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `regionate` builds **xgcm-grid-consistent** regional masks and boundaries for ocean/climate model output. It supports **arbitrary `xgcm.Grid` topologies** — single-tile periodic and bipolar-fold (Arctic) MOM6 grids, and genuinely multi-tile grids defined by `face_connections` (e.g. ECCOv4r4 lat-lon-cap, cubed-sphere) — by driving all grid logic from the topology-aware `sectionate` API rather than hard-coded MOM6 specifics. Given a geographic polygon, it snaps the polygon to a discrete model grid, producing a boolean cell mask plus the staggered (u,v) velocity faces that trace the region's boundary — so that volume/mass/heat budgets integrated over the masked region are exactly consistent with fluxes through the boundary faces. It leans heavily on its sibling package [`sectionate`](https://github.com/MOM6-community/sectionate) for the section/face-tracing math (requires the topology-driven [sectionate#47](https://github.com/MOM6-community/sectionate/pull/47)), and on the bipolar north-fold boundary from [xgcm#711](https://github.com/xgcm/xgcm/pull/711) (`boundary={..., "Y": {"fold": ...}}`) for single-tile tripolar-fold grids (that branch also carries the multi-tile `face_connections` padding fix, xgcm#712).
 
+## AI Usage Policy
+
+This repository has no formal AI Usage Policy of its own yet, so follow the one drafted for the sibling project xgcm ([`hdrake/xgcm@add-Claude.md`](https://github.com/hdrake/xgcm/tree/add-Claude.md)): **the person running the AI is responsible for every change it makes.** That means AI assistance must be disclosed, and the human must be able to explain the full diff. In practice:
+
+- Do not produce changes the user could not stand behind and explain — no cargo-culted edits, no "it probably works."
+- Surface uncertainty explicitly rather than hiding it behind confident-looking code.
+- Keep diffs small and reviewable so they *can* be explained.
+
+## Engineering norms
+
+Adapted from the xgcm draft above; apply these when changing regionate's code.
+
+1. **Deprecate by removing, not warning.** When you rename or remove public API, do not keep the old name limping along behind a `DeprecationWarning`. Remove it and make the old name fail immediately with a clear message (e.g. `raise ValueError("Argument 'old' renamed to 'new'.")`). Breaking changes are acceptable here; multi-release deprecation machinery is avoidable maintenance cost.
+2. **Raise on bad input; never return a wrong answer.** regionate already does this — e.g. the corner-coordinate / grid validation the constructors run before building a mask. Keep it up: a silently wrong mask or boundary is worse than an exception in scientific software. On ambiguous/invalid/unsupported input, raise a specific error rather than guessing.
+3. **Do not grow core dependencies.** The core deps are `sectionate` (the sibling that owns grid-section tracing and transports), plus `pyproj`, `geopandas`, `regionmask`, and `contourpy` (see `pyproject.toml`). Prefer pushing grid/transport logic *down into `sectionate`* over adding new dependencies here. Before adding any import, confirm it isn't pulling in a heavy new dependency.
+4. **Every code change ships with tests.** Build test data from the synthetic grid fixtures in `regionate/tests/` (e.g. `initialize_spherical_grid()`) rather than hand-rolling datasets. For a bug fix, first write a test that fails, then make it pass. Exercise both construction directions (boundary→mask via `GriddedRegion`, mask→boundary via `MaskRegions`) and both orientations (clockwise/counterclockwise) where relevant.
+5. **Version by effort; breaking changes are allowed.** Bump `regionate/version.py` (`__version__`, read by hatchling). Favor a clean break (norm 1) over a compatibility shim.
+
 ## Commands
 
 ```bash
