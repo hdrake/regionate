@@ -126,17 +126,22 @@ def atlantic_basin_mask(grid):
     Using published basin polygons (rather than a lon/lat box) keeps the mask
     geographically correct -- it follows the coastlines, fills the central
     Atlantic, and excludes the Pacific.
+
+    The per-tile rasterization + stitching that a multi-tile grid needs is done by
+    ``regionate.grid_conform.rasterize_per_tile`` (the same helper that lets
+    ``regionate`` build boundary->mask regions on lat-lon-cap grids), rather than
+    reimplemented here.
     """
     import regionmask
+    from regionate.grid_conform import rasterize_per_tile
     ob = regionmask.defined_regions.natural_earth_v5_1_2.ocean_basins_50
     atl_ids = [int(n) for n, nm in zip(ob.numbers, ob.names) if nm in ATLANTIC_BASINS]
-    facedim = grid._facedim
-    lon, lat, depth = grid._ds["geolon"], grid._ds["geolat"], grid._ds["Depth"]
-    arr = np.zeros(depth.shape, dtype=bool)
-    for f in range(grid._ds.sizes[facedim]):
-        ids = ob.mask(lon.isel({facedim: f}), lat.isel({facedim: f})).values
-        arr[f] = np.isin(ids, atl_ids)
-    return xr.DataArray(arr & (depth.values > 0), dims=depth.dims, coords=depth.coords)
+
+    def _atlantic(lon_2d, lat_2d):
+        return np.isin(ob.mask(lon_2d, lat_2d).values, atl_ids)
+
+    atlantic = rasterize_per_tile(grid, _atlantic)
+    return atlantic & (grid._ds["Depth"] > 0)
 
 
 def load_ECCO_temperature_flux(month=1, data_dir="../data"):

@@ -5,6 +5,8 @@ import regionmask
 import sectionate as sec
 from sectionate.gridutils import get_facedim, get_geo_corners, coord_dict
 import numpy as np
+import xarray as xr
+import warnings
 
 from .utilities import *
 from .geometry import split_at_antimeridian, normalize_lon
@@ -146,6 +148,55 @@ def get_region_boundary_grid_indices(lons, lats, grid):
     return (i_c, j_c, f_c, lons_c, lats_c, lons_uv, lats_uv)
 
 
+def rasterize_per_tile(grid, per_slice):
+    """Apply a 2D lon/lat rasterization to each tile of a grid and stitch the result.
+
+    ``per_slice(center_lon_2d, center_lat_2d)`` must map a pair of 2D tracer-center
+    coordinate DataArrays to a 2D boolean array (or DataArray) of the same shape --
+    typically a ``regionmask`` call, which accepts only 1D/2D lon/lat. On a
+    single-tile grid (``get_facedim(grid) is None``) it is called once on the full
+    2D coordinates. On a multi-tile grid (e.g. a lat-lon-cap / cubed-sphere grid,
+    whose coordinates carry an extra face dimension) it is called once per face and
+    the per-face masks are stitched back together along the face dimension, so
+    ``regionmask`` never sees the 3D coordinate array.
+
+    ARGUMENTS
+    ---------
+    grid [xgcm.Grid] -- ocean model grid
+    per_slice [callable] -- ``(lon_2d, lat_2d) -> 2D bool array/DataArray``
+
+    RETURNS
+    -------
+    mask : xr.DataArray of bool type, over the grid's tracer-center dims
+    """
+    geo = get_geo_centers(grid)
+    center_lon = geo["X"]
+    center_lat = geo["Y"]
+    facedim = get_facedim(grid)
+
+    if facedim is None or facedim not in center_lat.dims:
+        out = per_slice(center_lon, center_lat)
+        return xr.DataArray(
+            np.asarray(out, dtype=bool), dims=center_lat.dims, coords=center_lat.coords
+        )
+
+    arr = np.zeros(center_lat.shape, dtype=bool)
+    for f in range(center_lat.sizes[facedim]):
+        idx = tuple(f if d == facedim else slice(None) for d in center_lat.dims)
+        with warnings.catch_warnings():
+            # A region typically covers only some tiles; regionmask warns "No
+            # gridpoint belongs to any region" for the empty ones, which is the
+            # expected case when stitching per tile.
+            warnings.filterwarnings(
+                "ignore", message="No gridpoint belongs to any region"
+            )
+            out_f = per_slice(
+                center_lon.isel({facedim: f}), center_lat.isel({facedim: f})
+            )
+        arr[idx] = np.asarray(out_f, dtype=bool)
+    return xr.DataArray(arr, dims=center_lat.dims, coords=center_lat.coords)
+
+
 def mask_from_grid_boundaries(
     lons_c,
     lats_c,
@@ -159,7 +210,9 @@ def mask_from_grid_boundaries(
     each sub-polygon onto the grid's tracer-center lon/lat with regionmask
     (``wrap_lon=False``), and ORs the per-piece boolean masks together. The
     multipolygon pieces "stitch trivially by adding the masks", which handles
-    antimeridian-crossing and pole-encircling regions uniformly.
+    antimeridian-crossing and pole-encircling regions uniformly. Rasterization is
+    done per tile via `rasterize_per_tile`, so multi-tile (lat-lon-cap /
+    cubed-sphere) grids are supported as well as single-tile ones.
 
     ARGUMENTS
     ---------
@@ -174,10 +227,6 @@ def mask_from_grid_boundaries(
     -------
     region_grid_mask : xr.DataArray of bool type, over the tracer-center dims
     """
-    geo = get_geo_centers(grid)
-    center_lon = normalize_lon(geo["X"])
-    center_lat = geo["Y"]
-
     lons_c = np.asarray(lons_c, dtype=float)
     lats_c = np.asarray(lats_c, dtype=float)
 
@@ -198,27 +247,22 @@ def mask_from_grid_boundaries(
     split = split_at_antimeridian(polygon)
 
     if split.geom_type == "Polygon":
-        pieces = [split]
+        pieces = [p for p in [split] if not p.is_empty]
     else:
-        pieces = list(split.geoms)
+        pieces = [p for p in split.geoms if not p.is_empty]
 
     crs = "epsg:4326"
-    region_grid_mask = None
-    for piece in pieces:
-        if piece.is_empty:
-            continue
-        gdf = gpd.GeoDataFrame(index=[0], crs=crs, geometry=[piece])
-        piece_mask = ~np.isnan(
-            regionmask.mask_geopandas(
-                gdf,
-                center_lon,
-                lat=center_lat,
-                wrap_lon=False,
-            )
-        )
-        if region_grid_mask is None:
-            region_grid_mask = piece_mask
-        else:
-            region_grid_mask = region_grid_mask | piece_mask
 
-    return region_grid_mask
+    def _rasterize_pieces(center_lon, center_lat):
+        # The grid may use any longitude convention; the polygon pieces live in
+        # [-180, 180], so normalize the grid longitudes to match (wrap_lon=False).
+        clon = normalize_lon(center_lon)
+        piece_mask = np.zeros(center_lat.shape, dtype=bool)
+        for piece in pieces:
+            gdf = gpd.GeoDataFrame(index=[0], crs=crs, geometry=[piece])
+            piece_mask |= ~np.isnan(
+                regionmask.mask_geopandas(gdf, clon, lat=center_lat, wrap_lon=False)
+            ).values
+        return piece_mask
+
+    return rasterize_per_tile(grid, _rasterize_pieces)

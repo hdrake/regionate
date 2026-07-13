@@ -213,3 +213,27 @@ def test_maskregions_threads_face_index():
     region = regions[0]
     assert region.f_c is not None
     assert set(np.asarray(region.f_c).tolist()) == {0, 1}
+
+
+def test_boundary_to_mask_rasterizes_across_tiles():
+    """boundary -> mask on a multi-tile grid: rasterizing a lon/lat polygon that
+    straddles the tile seam must fill cells on BOTH faces. regionmask only accepts
+    1D/2D lon/lat, so this exercises `mask_from_grid_boundaries`' per-tile
+    rasterize-and-stitch (`rasterize_per_tile`) rather than handing it the 3D
+    (face, y, x) coordinate array."""
+    from regionate.grid_conform import mask_from_grid_boundaries
+    grid = two_face_grid(Nc=6)  # face 0 spans lon [0,90], face 1 [90,180]
+    # A box straddling the lon=90 seam, interior to the tiles' outer walls.
+    lons = np.array([45., 135., 135., 45.])
+    lats = np.array([-20., -20., 20., 20.])
+    mask = mask_from_grid_boundaries(lons, lats, grid)
+
+    assert "face" in mask.dims                              # face dimension retained
+    assert bool(mask.sel(face=0).any())                    # filled on face 0 ...
+    assert bool(mask.sel(face=1).any())                    # ... and face 1
+    # Exactly the cells whose centers fall inside the lon/lat box (centers are
+    # strictly interior to the box edges, so the closed polygon selects them).
+    lon = grid._ds.geolon.values
+    lat = grid._ds.geolat.values
+    expected = (lon > 45.) & (lon < 135.) & (lat > -20.) & (lat < 20.)
+    assert np.array_equal(mask.values, expected)
