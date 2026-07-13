@@ -75,15 +75,17 @@ def get_geo_centers(grid):
 
 
 def _pole_enclosing_polygon(lons_c, lats_c, delta_lon):
-    """Extend a pole-encircling boundary down to the South Pole, forming a closed
-    polygon that encloses everything south of the boundary.
+    """Extend a pole-encircling boundary to the enclosed pole, forming a closed
+    polygon that encloses everything between the boundary and that pole.
 
-    The boundary winding is first normalized to eastward (sectionate's
-    stereographic-plane orientation convention relative to the South Pole), then
-    rolled to be single-valued in longitude, then closed off with two points at
-    latitude -90. Both windings of the same boundary therefore enclose the same
-    region.
+    The pole is chosen from the boundary's mean latitude: a boundary hugging the
+    Arctic encloses the North Pole (+90), one hugging the Antarctic the South Pole
+    (-90). The equatorial / ambiguous case (mean latitude 0) defaults to the South
+    Pole. The boundary winding is first normalized to eastward, then rolled to be
+    single-valued in longitude, then closed off with two points at the pole. Both
+    windings of the same boundary therefore enclose the same region.
     """
+    pole = 90. if np.mean(lats_c) > 0. else -90.
     s = np.sign(delta_lon).astype(int)
     if s == -1:
         lons_c = lons_c[::-1]
@@ -111,7 +113,7 @@ def _pole_enclosing_polygon(lons_c, lats_c, delta_lon):
         lons, [lons[max_idx] + 10, lons[max_idx] + 10,
                lons[min_idx] - 10, lons[min_idx] - 10]
     )
-    lats = np.append(lats, [lats[max_idx], -90, -90, lats[min_idx]])
+    lats = np.append(lats, [lats[max_idx], pole, pole, lats[min_idx]])
 
     return Polygon(zip(lons, lats))
 

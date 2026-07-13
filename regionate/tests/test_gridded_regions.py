@@ -87,6 +87,27 @@ def test_pole_encircling_boundary_fills_hemisphere():
     assert not bool(region.mask.where(grid._ds.yh > 0, other=False).any())  # no northern
 
 
+def test_pole_cap_boundary_encloses_the_hugged_pole():
+    """A pole-encircling boundary encloses the cap on the side of the pole it hugs:
+    a high-northern-latitude circle encloses the NORTH cap (not its complement), a
+    high-southern one the SOUTH cap. (The ambiguous equatorial case defaults to
+    south -- see test_pole_encircling_boundary_fills_hemisphere.)"""
+    from regionate import GriddedRegion
+
+    grid = initialize_spherical_grid(N=6)   # row centers at -50,-30,-10,10,30,50
+    lons = np.array([0., 120., 240., 360.])
+
+    north = GriddedRegion("ncap", lons, np.full(4, 40.), grid).mask
+    assert int(north.sum()) == 6                                       # only the lat=50 row
+    assert bool(north.where(grid._ds.yh > 40., other=True).all())      # all northern
+    assert not bool(north.where(grid._ds.yh < 40., other=False).any())  # none southern
+
+    south = GriddedRegion("scap", lons, np.full(4, -40.), grid).mask
+    assert int(south.sum()) == 6                                       # only the lat=-50 row
+    assert bool(south.where(grid._ds.yh < -40., other=True).all())     # all southern
+    assert not bool(south.where(grid._ds.yh > -40., other=False).any())
+
+
 def test_gridded_region_from_mask():
     from regionate import MaskRegions
     

@@ -262,9 +262,12 @@ def test_cube_rotated_seam_obeys_divergence_theorem(lon0, lat0, radius, faces_ex
     whose seam corner coordinates coincide and whose rotated `face_connections`
     make `xgcm.diff` a legitimate oracle -- unlike `rotated_two_tile_grid`, whose
     deliberately non-physical offset coords make it a stitching-only fixture on
-    which no divergence test (xgcm.diff or padded_transports) closes. The regions
-    stay clear of the two cube vertices that live on no face (where a halo pad
-    cannot supply a value); closure holding is itself proof they do."""
+    which no divergence test (xgcm.diff or padded_transports) closes. These regions
+    stay clear of the cube vertices that live on no face -- NOT to dodge them, but
+    because `xgcm.diff` is not a valid oracle there (its halo fabricates a value at
+    an edge stored on no face). Those hardest points are covered by
+    `test_cube_vertex_junction_closes_for_nondivergent_flow`, whose div-free oracle
+    IS valid at the vertices."""
     from cube_grid import cube_left_grid, Nc
     grid, _ = cube_left_grid()
     lon = grid._ds["geolon"].values
@@ -295,3 +298,42 @@ def test_cube_rotated_seam_obeys_divergence_theorem(lon0, lat0, radius, faces_ex
             flux += int(uv["Lsign"][t]) * (U[f, j, i] if uv["var"][t] == "U" else V[f, j, i])
 
     assert np.isclose(interior, flux, atol=1e-9)
+
+
+def test_cube_vertex_junction_closes_for_nondivergent_flow():
+    """The hardest topology: a region whose boundary wraps a cube-vertex junction --
+    three faces and their rotated seams meeting at a point stored on at most one
+    face, INCLUDING the two vertices stored on NO face (the cube analogue of LLC90's
+    Arctic vertex). `xgcm.diff` cannot be the oracle here (its halo fabricates a
+    value at an edge stored on no face), so closure is checked against the
+    topology-independent fact that a closed loop's net transport of a non-divergent
+    (streamfunction) flow is exactly zero -- which holds even at the vertices."""
+    from cube_grid import cube_left_grid
+    from sectionate.gridutils import outer_topology
+    grid, _ = cube_left_grid()
+    ot = outer_topology(grid)
+    deg = np.array([len(a) for a in ot.node_adj])
+    native = ot.node_native[:, 0] >= 0
+    assert np.count_nonzero(~native) == 2   # the fixture really has 2 unstored vertices
+    # both unstored vertices (on no face) + one stored 3-valent vertex
+    vertices = list(np.where(~native)[0]) + [int(np.where((deg == 3) & native)[0][0])]
+
+    lon = grid._ds["geolon"].values
+    lat = grid._ds["geolat"].values
+    u, v = grid._ds["u"].values, grid._ds["v"].values   # non-divergent streamfunction flow
+    for n in vertices:
+        lo0, la0 = float(ot.node_lon[n]), float(ot.node_lat[n])
+        m = _geodist(lon, lat, lo0, la0) < 25.
+        mask = xr.DataArray(m, dims=grid._ds["geolon"].dims, coords=grid._ds["geolon"].coords)
+        assert len(set(np.where(m.any(axis=(1, 2)))[0].tolist())) >= 3   # truly wraps the junction
+
+        i_l, j_l, f_l, _, _ = grid_boundaries_from_mask(grid, mask)
+        flux = 0.0
+        for k in range(len(i_l)):
+            uv = sec.uvindices_from_qindices(grid, i_l[k], j_l[k], f_c=f_l[k])
+            for t in range(len(uv["var"])):
+                if uv["var"][t] == "0":
+                    continue
+                f, i, j = int(uv["face"][t]), int(uv["i"][t]), int(uv["j"][t])
+                flux += int(uv["Lsign"][t]) * (u[f, j, i] if uv["var"][t] == "U" else v[f, j, i])
+        assert np.isclose(flux, 0., atol=1e-9)
