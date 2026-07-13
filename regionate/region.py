@@ -441,12 +441,22 @@ def open_gr(path, ds_to_grid):
     for child_path in child_paths:
         child_name = child_path.split('/')[-1][:-4].replace('_', ' ')
         ds = xr.open_dataset(f"{child_path}/section.nc")
-        
-        section = sec.Section(
-            child_name,
-            sec.coords_from_lonlat(ds.lons_c.values, ds.lats_c.values)
+
+        # reconstruct the child as a gridded section carrying its stored corner
+        # indices (i_c/j_c/f_c), mirroring how `BoundedRegion` builds children --
+        # rather than discarding them and rebuilding a bare `sec.Section` from coords.
+        child_f_c = ds.f_c.values if 'f_c' in ds else None
+        section = sec.GriddedSection(
+            sec.Section(
+                child_name,
+                sec.coords_from_lonlat(ds.lons_c.values, ds.lats_c.values),
+            ),
+            grid,
+            i_c=ds.i_c.values,
+            j_c=ds.j_c.values,
+            f_c=child_f_c,
         )
-        
+
         section.save = {}
         for file in [f for f in os.listdir(child_path) if f != 'section.nc']:
             v = file.split('.')[0]

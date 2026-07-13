@@ -91,3 +91,33 @@ def test_overlap_alignment_keeps_indices_consistent_with_coords():
     align_boundaries_with_overlap_sections(regs)
     for name in ("0", "1"):
         assert indices_match_coords(regs.region_dict[name])
+
+
+def test_gr_child_roundtrip_preserves_gridded_indices(tmp_path):
+    """F7: `.gr` children must round-trip as gridded sections carrying their stored
+    i_c/j_c/f_c -- open_gr previously rebuilt them as bare `sec.Section` from coords
+    only, discarding the indices."""
+    import xgcm
+    import sectionate as sec
+    from regionate import GriddedRegion
+    from regionate.region import open_gr
+
+    grid = initialize_spherical_grid(N=12)
+    region = GriddedRegion("reg", np.array([60., 120., 120., 60.]),
+                           np.array([-30., -30., 30., 30.]), grid)
+    child = sec.GriddedSection(
+        sec.Section("child", sec.coords_from_lonlat(region.lons_c[:4], region.lats_c[:4])),
+        grid, i_c=region.i_c[:4], j_c=region.j_c[:4], f_c=None)
+    region.children = {"child": child}
+    region.to_gr(str(tmp_path))
+
+    def ds_to_grid(ds):
+        return xgcm.Grid(ds, coords={'X': {'outer': 'xq', 'center': 'xh'},
+                                     'Y': {'outer': 'yq', 'center': 'yh'}},
+                         padding={"X": "periodic", "Y": "extend"}, autoparse_metadata=False)
+
+    reloaded = open_gr(f"{tmp_path}/reg.gr", ds_to_grid)
+    cr = reloaded.children["child"]
+    assert isinstance(cr, sec.GriddedSection)
+    assert np.array_equal(np.asarray(cr.i_c), np.asarray(region.i_c[:4]))
+    assert np.array_equal(np.asarray(cr.j_c), np.asarray(region.j_c[:4]))
