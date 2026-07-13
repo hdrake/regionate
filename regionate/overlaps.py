@@ -42,12 +42,31 @@ def align_boundaries_with_overlap_sections(regions, remove_gaps=True):
             )
             
 def roll_boundary_to_align_with_overlap(r, oidx, remove_gaps=True):
-    roll_idx = -consecutive_lists(oidx[0], mod=r.lons_c.size)[0][0]
-    new_oidx = {onum: np.mod(np.array(o) + roll_idx, r.lons_c.size) for (onum, o) in oidx.items()}
-    
+    """Roll (and optionally gap-trim) a region's boundary so it starts at an overlap
+    section. The corner-index arrays ``i_c``/``j_c``/``f_c`` are rolled and trimmed in
+    lockstep with ``lons_c``/``lats_c`` so they stay consistent with the coordinates.
+
+    ``i_c``/``j_c``/``f_c`` may be stored *closed* (the first corner repeated at the
+    end) while ``lons_c``/``lats_c`` are *open*; the open part is rolled/trimmed and
+    the arrays re-closed afterward.
+    """
+    N = r.lons_c.size
+    roll_idx = -consecutive_lists(oidx[0], mod=N)[0][0]
+    new_oidx = {onum: np.mod(np.array(o) + roll_idx, N) for (onum, o) in oidx.items()}
+
+    # corner-index arrays to keep in lockstep with the coordinates (f_c only on
+    # multi-tile regions). Detect the closed (first corner repeated) storage.
+    idx_names = ["i_c", "j_c"]
+    if getattr(r, "f_c", None) is not None:
+        idx_names.append("f_c")
+    closed = all(getattr(r, name).size == N + 1 for name in idx_names)
+
     r.lons_c = np.roll(r.lons_c, roll_idx)
     r.lats_c = np.roll(r.lats_c, roll_idx)
-    
+    for name in idx_names:
+        arr = getattr(r, name)
+        setattr(r, name, np.roll(arr[:N] if closed else arr, roll_idx))
+
     if remove_gaps:
         for onum, o in new_oidx.items():
             gaps = np.array([i for i in range(np.min(o), np.max(o)+1) if i not in o])
@@ -55,8 +74,13 @@ def roll_boundary_to_align_with_overlap(r, oidx, remove_gaps=True):
                 r.lons_c[gaps] = np.nan
                 r.lats_c[gaps] = np.nan
 
-    nan_idx = np.isnan(r.lons_c) | np.isnan(r.lats_c)
-    r.lons_c = r.lons_c[~nan_idx] 
-    r.lats_c = r.lats_c[~nan_idx]
-        
+    keep = ~(np.isnan(r.lons_c) | np.isnan(r.lats_c))
+    r.lons_c = r.lons_c[keep]
+    r.lats_c = r.lats_c[keep]
+    for name in idx_names:
+        arr = getattr(r, name)[keep]
+        if closed:                       # re-close the trimmed loop
+            arr = np.append(arr, arr[0])
+        setattr(r, name, arr)
+
     return r
