@@ -130,9 +130,10 @@ class GriddedRegion(Region):
         positive_in=True,
         mask=None,
         ij=None,
+        curve="latitude circle",
         ):
         """
-        Create a Region object (named `name`) from arrays of (`lons`, `lats`) and an ocean model `grid`. 
+        Create a Region object (named `name`) from arrays of (`lons`, `lats`) and an ocean model `grid`.
 
         PARAMETERS
         ----------
@@ -151,6 +152,11 @@ class GriddedRegion(Region):
             If None, the indices of grid coordinates closest to provided coordinates `self.i_c` and `self.j_c`
             are inferred from the model grid. If list, assume two elements in the list and
             extract `self.i_c = ij[0]` and `self.j_c = ij[1]`.
+        curve : str
+            Curve followed between consecutive boundary vertices when snapping the
+            polygon onto the grid. Default: ``"latitude circle"`` (constant latitude,
+            marching in longitude); pass ``"great circle"`` for the geodesic. Only
+            used on the boundary-defined construction path (ignored when `ij` is given).
 
         RETURNS
         -------
@@ -179,7 +185,8 @@ class GriddedRegion(Region):
                 lons,
                 lats,
                 mask=mask,
-                positive_in=positive_in
+                positive_in=positive_in,
+                curve=curve
             )
         elif ij is None:
             raise NameError("Must provide lons and lats as lists or arrays\
@@ -211,7 +218,8 @@ class GriddedRegion(Region):
         lons,
         lats,
         positive_in=True,
-        mask=None
+        mask=None,
+        curve="latitude circle"
         ):
         """
         TO DO
@@ -222,7 +230,8 @@ class GriddedRegion(Region):
             get_region_boundary_grid_indices(
                 lons.copy(),
                 lats.copy(),
-                self.grid
+                self.grid,
+                curve=curve
             )
         )
         if mask is None:
@@ -308,12 +317,13 @@ class GriddedRegion(Region):
                     ds_save.to_netcdf(f"{sec_path}/{k}.nc")
 
 class BoundedRegion(GriddedRegion):
-    def __init__(self, section, grid, **kwargs):
+    def __init__(self, section, grid, curve="latitude circle", **kwargs):
         super().__init__(
             section.name,
             section.lons_c,
             section.lats_c,
             grid,
+            curve=curve,
             **kwargs
         )
         self.children = {}
@@ -350,7 +360,7 @@ class BoundedRegion(GriddedRegion):
             
         for child_name, child in section.children.items():
             i_c, j_c, f_c, lons_c, lats_c = _normalize_grid_section(
-                sec.grid_section(grid, child.lons_c, child.lats_c)
+                sec.grid_section(grid, child.lons_c, child.lats_c, curve=curve)
             )
 
             child_coords = sec.coords_from_lonlat(lons_c, lats_c)
@@ -367,7 +377,7 @@ class BoundedRegion(GriddedRegion):
                     child.lats_c = child.lats_c[::-1]
                     # recompute the child sections using the correct orientation
                     i_c, j_c, f_c, lons_c, lats_c = _normalize_grid_section(
-                        sec.grid_section(grid, child.lons_c, child.lats_c)
+                        sec.grid_section(grid, child.lons_c, child.lats_c, curve=curve)
                     )
                 else:
                     raise ValueError("Child corner sections do not match up with parent ones!")

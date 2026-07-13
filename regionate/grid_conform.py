@@ -116,7 +116,7 @@ def _pole_enclosing_polygon(lons_c, lats_c, delta_lon):
     return Polygon(zip(lons, lats))
 
 
-def get_region_boundary_grid_indices(lons, lats, grid):
+def get_region_boundary_grid_indices(lons, lats, grid, curve="latitude circle"):
     """Find boundary coordinates and grid indices that approximate a polygon.
 
     ARGUMENTS
@@ -124,6 +124,12 @@ def get_region_boundary_grid_indices(lons, lats, grid):
     lons : list or np.ndarray of longitudes
     lats : list or np.ndarray of latitudes
     grid : `xgcm.Grid` instance
+    curve : str
+        Curve followed between consecutive boundary vertices when snapping them
+        onto the grid, passed through to `sectionate.grid_section`. Default:
+        ``"latitude circle"`` (constant latitude, marching in longitude), so an
+        edge between two vertices at the same latitude stays on that latitude
+        rather than bowing poleward as the ``"great circle"`` geodesic would.
 
     RETURNS
     -------
@@ -141,7 +147,7 @@ def get_region_boundary_grid_indices(lons, lats, grid):
         lons, lats = loop(lons), loop(lats)
 
     i_c, j_c, f_c, lons_c, lats_c = _normalize_grid_section(
-        sec.grid_section(grid, lons, lats)
+        sec.grid_section(grid, lons, lats, curve=curve)
     )
     lons_uv, lats_uv = sec.uvcoords_from_qindices(grid, i_c, j_c, f_c=f_c)
 
