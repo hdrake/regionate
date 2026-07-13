@@ -107,16 +107,14 @@ class GriddedRegions(Regions):
         `GriddedRegions` instance
         """
         self.grid = grid
-        
+
+        if not all(type(v) in [Region, GriddedRegion, BoundedRegion]
+                   for v in region_dict.values()):
+            raise TypeError(
+                "Values in `region_dict` must be `Region`, `GriddedRegion`, or "
+                "`BoundedRegion` instances."
+            )
         super().__init__(region_dict, name=name)
-        try:
-            if all([type(v) in [Region, GriddedRegion, BoundedRegion] for v in region_dict.values()]):
-                super().__init__(region_dict, name=name)
-            else:
-                raise NameError("""Values in `region_dict` dictionary must be instances of
-                `Region`, `GriddedRegion`, or `BoundedRegion`.""")
-        except:
-            raise NameError("Must provide valid `region_dict` dictionary to initialize.")
 
     def to_grs(self, path):
         """

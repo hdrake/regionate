@@ -237,3 +237,61 @@ def test_boundary_to_mask_rasterizes_across_tiles():
     lat = grid._ds.geolat.values
     expected = (lon > 45.) & (lon < 135.) & (lat > -20.) & (lat < 20.)
     assert np.array_equal(mask.values, expected)
+
+
+def _geodist(lon, lat, lon0, lat0):
+    la, lo = np.deg2rad(lat), np.deg2rad(lon)
+    la0, lo0 = np.deg2rad(lat0), np.deg2rad(lon0)
+    return np.rad2deg(np.arccos(np.clip(
+        np.sin(la0) * np.sin(la) + np.cos(la0) * np.cos(la) * np.cos(lo - lo0), -1., 1.)))
+
+
+@pytest.mark.parametrize("lon0,lat0,radius,faces_expected", [
+    (0., 45., 18., {0, 4}),       # one rotated seam
+    (45., 40., 16., {0, 1, 4}),   # three faces meeting near a cube corner
+    (90., 45., 18., {1, 4}),      # another rotated seam
+])
+def test_cube_rotated_seam_obeys_divergence_theorem(lon0, lat0, radius, faces_expected):
+    """A region straddling a ROTATED tile seam must obey the discrete divergence
+    theorem, checked against an INDEPENDENT ground truth: xgcm's own convergence
+    (`grid.diff` with `other_component`) equals the net flux through regionate's
+    traced boundary. This closes the rotated-seam coverage gap that otherwise runs
+    only in the gated real-ECCO tests.
+
+    The fixture is a physically-valid cubed-sphere (`cube_grid.cube_left_grid`),
+    whose seam corner coordinates coincide and whose rotated `face_connections`
+    make `xgcm.diff` a legitimate oracle -- unlike `rotated_two_tile_grid`, whose
+    deliberately non-physical offset coords make it a stitching-only fixture on
+    which no divergence test (xgcm.diff or padded_transports) closes. The regions
+    stay clear of the two cube vertices that live on no face (where a halo pad
+    cannot supply a value); closure holding is itself proof they do."""
+    from cube_grid import cube_left_grid, Nc
+    grid, _ = cube_left_grid()
+    lon = grid._ds["geolon"].values
+    lat = grid._ds["geolat"].values
+    m = _geodist(lon, lat, lon0, lat0) < radius
+    mask = xr.DataArray(m, dims=grid._ds["geolon"].dims, coords=grid._ds["geolon"].coords)
+    assert set(np.where(m.any(axis=(1, 2)))[0].tolist()) == faces_expected  # straddles the seam(s)
+
+    rng = np.random.default_rng(1)
+    umo = xr.DataArray(rng.standard_normal((6, Nc, Nc)), dims=("face", "j", "i_g"))
+    vmo = xr.DataArray(rng.standard_normal((6, Nc, Nc)), dims=("face", "j_g", "i"))
+
+    # independent ground truth: xgcm's own convergence across the rotated seam
+    conv = -(grid.diff(umo, "X", other_component={"Y": vmo})
+             + grid.diff(vmo, "Y", other_component={"X": umo}))
+    interior = float(conv.where(mask, 0.).sum())
+
+    # net flux through the traced boundary, via sectionate
+    U, V = umo.values, vmo.values
+    i_l, j_l, f_l, _, _ = grid_boundaries_from_mask(grid, mask)
+    flux = 0.0
+    for k in range(len(i_l)):
+        uv = sec.uvindices_from_qindices(grid, i_l[k], j_l[k], f_c=f_l[k])
+        for t in range(len(uv["var"])):
+            if uv["var"][t] == "0":
+                continue
+            f, i, j = int(uv["face"][t]), int(uv["i"][t]), int(uv["j"][t])
+            flux += int(uv["Lsign"][t]) * (U[f, j, i] if uv["var"][t] == "U" else V[f, j, i])
+
+    assert np.isclose(interior, flux, atol=1e-9)

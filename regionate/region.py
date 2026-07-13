@@ -202,7 +202,6 @@ class GriddedRegion(Region):
                     self.lons_c,
                     self.lats_c,
                     self.grid,
-                    along_boundary=True
                 )
             else:
                 self.mask = mask

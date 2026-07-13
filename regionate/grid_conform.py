@@ -207,7 +207,6 @@ def mask_from_grid_boundaries(
     lons_c,
     lats_c,
     grid,
-    along_boundary=False,
     ):
     """Find the boolean cell mask bounded by a sequence of cell-corner coordinates.
 
@@ -225,9 +224,6 @@ def mask_from_grid_boundaries(
     lons_c [list or np.ndarray] -- cell corner longitudes
     lats_c [list or np.ndarray] -- cell corner latitudes
     grid [xgcm.Grid] -- ocean model grid
-    along_boundary [bool] -- if True, treat (lons_c, lats_c) as an already-closed
-        boundary polygon (no extra closure logic). Currently both paths use the
-        same split+OR rasterization; the flag is retained for API compatibility.
 
     RETURNS
     -------
@@ -238,13 +234,12 @@ def mask_from_grid_boundaries(
 
     # Total signed longitude winding along the boundary, ignoring antimeridian
     # jumps. A magnitude near 360 means the boundary encircles a pole and cannot
-    # be drawn as a simple lon/lat polygon; we then extend it to the South Pole
-    # (sectionate's stereographic-plane orientation convention) so the polygon
-    # encloses everything on the boundary's enclosed side.
+    # be drawn as a simple lon/lat polygon; we then extend it to the enclosed pole
+    # so the polygon encloses everything on the boundary's enclosed side.
     dlon = np.diff(lons_c)
     delta_lon = np.sum(dlon[np.abs(dlon) < 180.])
 
-    if (not along_boundary) and (np.abs(delta_lon) >= 180.):
+    if np.abs(delta_lon) >= 180.:
         polygon = _pole_enclosing_polygon(lons_c, lats_c, delta_lon)
     else:
         polygon = Polygon(zip(normalize_lon(lons_c), lats_c))
