@@ -130,7 +130,7 @@ class GriddedRegion(Region):
         positive_in=True,
         mask=None,
         ij=None,
-        curve="latitude circle",
+        curve="great circle",
         ):
         """
         Create a Region object (named `name`) from arrays of (`lons`, `lats`) and an ocean model `grid`.
@@ -154,9 +154,13 @@ class GriddedRegion(Region):
             extract `self.i_c = ij[0]` and `self.j_c = ij[1]`.
         curve : str
             Curve followed between consecutive boundary vertices when snapping the
-            polygon onto the grid. Default: ``"latitude circle"`` (constant latitude,
-            marching in longitude); pass ``"great circle"`` for the geodesic. Only
-            used on the boundary-defined construction path (ignored when `ij` is given).
+            polygon onto the grid. Default: ``"great circle"`` (the geodesic), which
+            traces arbitrary edges -- including diagonal ones -- correctly. Pass
+            ``"latitude circle"`` to instead march along constant latitude, so a box
+            edge between two same-latitude vertices stays on that latitude rather than
+            bowing poleward (only sensible for axis-aligned boxes; it snaps a diagonal
+            edge onto a latitude line). Only used on the boundary-defined construction
+            path (ignored when `ij` is given).
 
         RETURNS
         -------
@@ -218,7 +222,7 @@ class GriddedRegion(Region):
         lats,
         positive_in=True,
         mask=None,
-        curve="latitude circle"
+        curve="great circle"
         ):
         """
         TO DO
@@ -316,7 +320,7 @@ class GriddedRegion(Region):
                     ds_save.to_netcdf(f"{sec_path}/{k}.nc")
 
 class BoundedRegion(GriddedRegion):
-    def __init__(self, section, grid, curve="latitude circle", **kwargs):
+    def __init__(self, section, grid, curve="great circle", **kwargs):
         super().__init__(
             section.name,
             section.lons_c,

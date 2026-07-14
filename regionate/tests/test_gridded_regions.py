@@ -50,23 +50,25 @@ def test_gridded_region_from_boundary():
     region_rev = GriddedRegion("test_region2", lonseg[::-1], latseg[::-1], grid)
     assert np.all(np.equal(region.mask, region_rev.mask))
     
-def test_curve_default_is_latitude_circle():
-    """The default boundary->grid tracing follows latitude circles (edges at constant
-    latitude), not great circles. A mid-latitude box therefore encloses exactly the
-    latitude-circle cells, and fewer than the poleward-bowing great circle would."""
+def test_curve_default_is_great_circle():
+    """The default boundary->grid tracing follows great circles (geodesic edges), so
+    arbitrary -- including diagonal -- boundary edges are traced correctly rather than
+    collapsed onto a latitude line. `curve="latitude circle"` is still available and
+    differs: on a mid-latitude box it encloses fewer cells (its edges do not bow
+    poleward)."""
     from regionate import GriddedRegion
 
     grid = initialize_spherical_grid(N=12)
     lons = np.array([60., 180., 180., 60.])   # 120-degree edges (each < 180)
     lats = np.array([-40., -40., 40., 40.])
     default = GriddedRegion("default", lons, lats, grid)
-    lat_circle = GriddedRegion("lat", lons, lats, grid, curve="latitude circle")
     great_circle = GriddedRegion("great", lons, lats, grid, curve="great circle")
+    lat_circle = GriddedRegion("lat", lons, lats, grid, curve="latitude circle")
 
-    assert bool((default.mask == lat_circle.mask).all())   # default IS latitude circle
-    assert bool((default.mask != great_circle.mask).any())  # and differs from great circle
+    assert bool((default.mask == great_circle.mask).all())  # default IS great circle
+    assert bool((default.mask != lat_circle.mask).any())    # and differs from latitude circle
     # great circle bows poleward, enclosing strictly more cells than the latitude box
-    assert int(great_circle.mask.sum()) > int(default.mask.sum())
+    assert int(great_circle.mask.sum()) > int(lat_circle.mask.sum())
 
 
 def test_pole_encircling_boundary_fills_hemisphere():
