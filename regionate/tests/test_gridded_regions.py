@@ -149,6 +149,41 @@ def test_gridded_region_from_mask():
     all_loops = [b for r in regions_inv for b in r.boundaries]
     assert sorted(_latitude_circle_lat(b) for b in all_loops) == [-60., -20., 20., 60.]
 
+def test_maskregions_gr_roundtrip(tmp_path):
+    """A MaskRegions collection round-trips through the multi-loop `.grs`/`.gr`
+    format: each component's own mask and its full list of boundary loops (with
+    their stored corner indices) survive save/reload."""
+    import xgcm
+    from regionate import MaskRegions
+    from regionate.regions import open_grs
+
+    grid = initialize_spherical_grid()
+    # zonal strip -> ONE component with TWO boundary loops: exercises multi-loop I/O
+    mask = xr.ones_like(grid._ds.geolon).where(np.abs(grid._ds.yh) <= 10, 0.).astype(bool)
+    mr = MaskRegions(mask, grid, name="strip")
+    mr.to_grs(f"{tmp_path}/")
+
+    def ds_to_grid(ds):
+        return xgcm.Grid(ds, coords={'X': {'outer': 'xq', 'center': 'xh'},
+                                     'Y': {'outer': 'yq', 'center': 'yh'}},
+                         padding={"X": "periodic", "Y": "extend"}, autoparse_metadata=False)
+
+    reloaded = open_grs(f"{tmp_path}/strip.grs", ds_to_grid)
+    assert len(reloaded.region_dict) == len(mr.region_dict) == 1
+    orig = list(mr.region_dict.values())[0]
+    back = list(reloaded.region_dict.values())[0]
+    assert bool((back.mask.values == orig.mask.values).all())
+    assert len(back.boundaries) == len(orig.boundaries) == 2
+
+    def lat0(b):
+        return round(float(np.asarray(b.lats_c)[0]), 6)
+    for b in back.boundaries:
+        match = next(ob for ob in orig.boundaries if lat0(ob) == lat0(b))
+        assert np.array_equal(np.asarray(b.i_c), np.asarray(match.i_c))
+        assert np.array_equal(np.asarray(b.j_c), np.asarray(match.j_c))
+        assert np.allclose(np.mod(b.lons_c, 360.), np.mod(match.lons_c, 360.))
+
+
 def modequal(a,b):
     return np.equal(np.mod(a, 360.), np.mod(b, 360.))
 

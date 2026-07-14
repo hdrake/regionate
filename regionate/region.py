@@ -437,14 +437,97 @@ class MaskRegion:
         return (f"{str(type(self))[8:-2]}('{self.name}', "
                 f"{n} boundar{'y' if n == 1 else 'ies'})")
 
+    def to_gr(self, path):
+        """Save the MaskRegion as a `.gr` directory.
+
+        Unlike `GriddedRegion.to_gr` (a single boundary loop stored in
+        ``region.nc``), a `MaskRegion` has a *list* of boundary loops, so each is
+        written as its own sub-section under ``boundaries/``. The directory is
+        tagged ``kind="MaskRegion"`` on ``region.nc`` so `open_gr` knows to rebuild
+        a `MaskRegion` rather than a `GriddedRegion`.
+
+        Layout::
+
+            <name>.gr/
+              grid.nc                            # grid coords (or symlink to ../grid.nc)
+              region.nc                          # the component's boolean mask
+              boundaries/loop_<k>.sec/section.nc # each loop's lons_c/lats_c/i_c/j_c[/f_c]
+
+        Arguments
+        ---------
+        path [str] -- directory to write ``[MaskRegion.name].gr`` into.
+        """
+        gr_path = f"{path}/{self.name.replace(' ','_')}.gr/"
+        Path(gr_path).mkdir(parents=True, exist_ok=True)
+
+        grid_path = f"{gr_path}/grid.nc"
+        parent_grid = f"{path}/../grid.nc"
+        if os.path.isfile(parent_grid):
+            os.symlink(parent_grid, grid_path)
+        else:
+            grid = self.grid
+            grid._ds.drop_vars([v for v in grid._ds.data_vars]).to_netcdf(grid_path)
+
+        ds = xr.Dataset(attrs={"kind": "MaskRegion"})
+        ds['mask'] = self.mask
+        ds.to_netcdf(f"{gr_path}/region.nc")
+
+        for (k, v) in self.save.items():
+            v.to_netcdf(f"{gr_path}/{k}.nc")
+
+        bnd_path = f"{gr_path}/boundaries/"
+        Path(bnd_path).mkdir(parents=True, exist_ok=True)
+        for k, loop in enumerate(self.boundaries):
+            sec_path = f"{bnd_path}/loop_{k}.sec"
+            Path(sec_path).mkdir(parents=True, exist_ok=True)
+            dsb = xr.Dataset()
+            dsb['lons_c'] = xr.DataArray(np.asarray(loop.lons_c), dims=('vertex',))
+            dsb['lats_c'] = xr.DataArray(np.asarray(loop.lats_c), dims=('vertex',))
+            dsb['i_c'] = xr.DataArray(np.asarray(loop.i_c), dims=('corner',))
+            dsb['j_c'] = xr.DataArray(np.asarray(loop.j_c), dims=('corner',))
+            if getattr(loop, 'f_c', None) is not None:
+                dsb['f_c'] = xr.DataArray(np.asarray(loop.f_c), dims=('corner',))
+            dsb.to_netcdf(f"{sec_path}/section.nc")
+
+
+def _open_mask_region_gr(path, name, grid, ds):
+    """Reconstruct a `MaskRegion` from a ``.gr`` directory written by
+    `MaskRegion.to_gr` (its mask plus one gridded-section loop per ``boundaries/``
+    sub-directory, each carrying its stored i_c/j_c[/f_c])."""
+    mask = ds['mask']
+    bnd_path = f"{path}/boundaries/"
+    loop_dirs = sorted(
+        [d for d in os.listdir(bnd_path) if d.endswith('.sec')],
+        key=lambda d: int(d[len('loop_'):-len('.sec')]),
+    )
+    boundaries = []
+    for d in loop_dirs:
+        dsb = xr.open_dataset(f"{bnd_path}/{d}/section.nc")
+        f_c = dsb.f_c.values if 'f_c' in dsb else None
+        boundaries.append(sec.GriddedSection(
+            sec.Section(d[:-4], sec.coords_from_lonlat(dsb.lons_c.values, dsb.lats_c.values)),
+            grid, i_c=dsb.i_c.values, j_c=dsb.j_c.values, f_c=f_c,
+        ))
+    region = MaskRegion(name, grid, mask, boundaries)
+    for file in [f for f in os.listdir(path)
+                 if f.endswith('.nc') and f not in ('grid.nc', 'region.nc')]:
+        region.save[file.split('.')[0]] = xr.open_dataset(f"{path}/{file}")
+    return region
+
 
 def open_gr(path, ds_to_grid):
 
     ds_grid = xr.open_dataset(f"{path}/grid.nc")
     grid = ds_to_grid(ds_grid)
     ds = xr.open_dataset(f"{path}/region.nc")
-    
+
     name = path.split('/')[-1][:-3].replace('_',' ')
+
+    # A MaskRegion `.gr` stores only the mask in region.nc (its loops live under
+    # boundaries/); a GriddedRegion `.gr` stores a single loop's i_c/lons_c inline.
+    if ds.attrs.get('kind') == 'MaskRegion' or os.path.isdir(f"{path}/boundaries"):
+        return _open_mask_region_gr(path, name, grid, ds)
+
     f_c = ds.f_c.values if 'f_c' in ds else None
     region = GriddedRegion(
         name,
