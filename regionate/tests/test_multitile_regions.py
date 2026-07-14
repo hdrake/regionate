@@ -152,12 +152,13 @@ def test_boundary_obeys_discrete_divergence_theorem():
     U, V = umo.values, vmo.values
     flux = 0.0
     for region in MaskRegions(mask, grid).region_dict.values():
-        uv = sec.uvindices_from_qindices(grid, region.i_c, region.j_c, f_c=region.f_c)
-        for k in range(len(uv["var"])):
-            if uv["var"][k] == "0":
-                continue
-            f, i, j = int(uv["face"][k]), int(uv["i"][k]), int(uv["j"][k])
-            flux += int(uv["Lsign"][k]) * (U[f, j, i] if uv["var"][k] == "U" else V[f, j, i])
+        for loop_ in region.boundaries:
+            uv = sec.uvindices_from_qindices(grid, loop_.i_c, loop_.j_c, f_c=loop_.f_c)
+            for k in range(len(uv["var"])):
+                if uv["var"][k] == "0":
+                    continue
+                f, i, j = int(uv["face"][k]), int(uv["i"][k]), int(uv["j"][k])
+                flux += int(uv["Lsign"][k]) * (U[f, j, i] if uv["var"][k] == "U" else V[f, j, i])
 
     assert np.isclose(convergence, flux, atol=1e-9)
 
@@ -211,8 +212,10 @@ def test_maskregions_threads_face_index():
     regions = MaskRegions(mask, grid).region_dict
     assert len(regions) == 1
     region = regions[0]
-    assert region.f_c is not None
-    assert set(np.asarray(region.f_c).tolist()) == {0, 1}
+    assert len(region.boundaries) == 1
+    loop_ = region.boundaries[0]
+    assert loop_.f_c is not None
+    assert set(np.asarray(loop_.f_c).tolist()) == {0, 1}
 
 
 def test_boundary_to_mask_rasterizes_across_tiles():

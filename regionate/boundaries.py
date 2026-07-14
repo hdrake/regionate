@@ -1,6 +1,10 @@
 import contourpy
 import numpy as np
 import xarray as xr
+# scipy is a hard dependency of `sectionate` (this package's core sibling), so it is
+# always available; used for C-speed seam-aware connected-component labeling.
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components as _connected_components_csr
 from xgcm.padding import pad
 try:
     # north-fold boundary detector; only present in xgcm with north-fold support (xgcm#711)
@@ -163,38 +167,42 @@ def connected_components(grid, mask):
         Ip[:, :-2, 1:-1],  # south
     )
 
-    parent = self_id.copy()
+    # Collect the seam-aware edges between in-mask cells, then label with scipy's
+    # C-speed connected-components. scipy is a hard dependency of `sectionate` (this
+    # package's core sibling), so this adds no new dependency. We build the graph on
+    # only the in-mask cells (remapped to a compact index) so out-of-mask cells do
+    # not each become their own component.
+    in_idx = np.flatnonzero(mflat)              # global ids of in-mask cells (sorted)
+    n_in = in_idx.size
+    pos = np.full(size, -1, dtype=np.int64)     # global id -> compact in-mask index
+    pos[in_idx] = np.arange(n_in)
 
-    def find(x):
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    def union(a, b):
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[max(ra, rb)] = min(ra, rb)
-
+    src_parts, dst_parts = [], []
     for nbr in neighbours:
         n = nbr.reshape(-1)
         valid = mflat & ~np.isnan(n)            # self in-mask, neighbour exists
         s_v = self_id[valid]
         n_v = n[valid].astype(np.int64)
         both = mflat[n_v]                        # neighbour also in-mask
-        for a, b in zip(s_v[both].tolist(), n_v[both].tolist()):
-            union(a, b)
+        src_parts.append(pos[s_v[both]])
+        dst_parts.append(pos[n_v[both]])
+    src = np.concatenate(src_parts) if src_parts else np.empty(0, np.int64)
+    dst = np.concatenate(dst_parts) if dst_parts else np.empty(0, np.int64)
+
+    graph = coo_matrix(
+        (np.ones(src.size, dtype=np.int8), (src, dst)), shape=(n_in, n_in)
+    ).tocsr()
+    ncomp, comp = _connected_components_csr(graph, directed=False)
+
+    # Relabel so component ids appear in first-in-mask-cell (flat) order -- stable and
+    # independent of scipy's internal labeling.
+    _, first = np.unique(comp, return_index=True)
+    remap = np.empty(ncomp, dtype=np.int64)
+    remap[comp[np.sort(first)]] = np.arange(ncomp)
+    comp = remap[comp]
 
     labels_flat = np.full(size, -1, dtype=np.int64)
-    order, ncomp = {}, 0
-    for i in np.flatnonzero(mflat).tolist():
-        r = find(i)                              # root is the min id, always in-mask
-        c = order.get(r)
-        if c is None:
-            c = ncomp
-            order[r] = c
-            ncomp += 1
-        labels_flat[i] = c
+    labels_flat[in_idx] = comp
 
     labels_arr = labels_flat.reshape(nf, Nyc, Nxc)
     if facedim is None:

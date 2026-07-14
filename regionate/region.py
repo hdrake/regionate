@@ -406,6 +406,38 @@ class BoundedRegion(GriddedRegion):
             child_section_gridded.parent_idx_uv = parent_idx_uv
             self.children[child_name] = child_section_gridded
 
+class MaskRegion:
+    """One topology-aware connected component of a cell mask on a C-grid model.
+
+    Unlike `GriddedRegion` -- a single closed polygon boundary that is *handed* a
+    mask -- a `MaskRegion` owns exactly the cells of one connected component
+    (`.mask`, derived from the labeling, hence unambiguous) together with the full
+    set of grid-conforming boundary loops that enclose *those* cells
+    (`.boundaries`, each a `sectionate.GriddedSection`). A component that wraps a
+    seam or contains holes simply has more than one boundary loop; integrating a
+    flux over every loop reproduces the flux convergence over `.mask` exactly (the
+    discrete divergence theorem), whatever the loop count.
+
+    PARAMETERS
+    ----------
+    name : str
+    grid : `xgcm.Grid` instance
+    mask : `xr.DataArray` of bool -- this component's own cells
+    boundaries : list of `sectionate.GriddedSection` -- the loops enclosing `mask`
+    """
+    def __init__(self, name, grid, mask, boundaries):
+        self.name = name
+        self.grid = grid
+        self.mask = mask
+        self.boundaries = boundaries
+        self.save = {}
+
+    def __repr__(self):
+        n = len(self.boundaries)
+        return (f"{str(type(self))[8:-2]}('{self.name}', "
+                f"{n} boundar{'y' if n == 1 else 'ies'})")
+
+
 def open_gr(path, ds_to_grid):
 
     ds_grid = xr.open_dataset(f"{path}/grid.nc")
