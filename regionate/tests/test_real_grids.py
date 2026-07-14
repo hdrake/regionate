@@ -30,9 +30,14 @@ EXAMPLES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "examples")
     reason="set REGIONATE_REALDATA_TESTS=1 and provide the MOM6 global example file",
 )
 def test_mom6_global_box_mask_boundary_consistency():
-    """On the real global MOM6 grid, a mid-latitude box defined by its boundary
-    yields a mask whose own traced boundary re-encloses the same mask."""
+    """On the real global MOM6 grid, a mid-latitude box's mask splits into connected
+    components whose OWN traced boundaries close the discrete divergence theorem: a
+    synthetic flux field's convergence over each component's cells equals the net flux
+    through that component's boundary loops. This is the substantive consistency check
+    (the boundaries really do enclose those cells) -- not the tautology that the
+    component masks tile the input mask, which the labeling guarantees by construction."""
     import xgcm
+    import sectionate as sec
     from regionate import GriddedRegion, MaskRegions
 
     ds = xr.open_dataset(MOM6_FILE).fillna(0.)
@@ -48,13 +53,31 @@ def test_mom6_global_box_mask_boundary_consistency():
     region = GriddedRegion("box", lons, lats, grid)
     assert int(region.mask.sum()) > 0
 
-    # Re-tracing the mask must recover a region enclosing exactly the same cells.
-    retraced = MaskRegions(region.mask, grid).region_dict
-    assert len(retraced) >= 1
+    mr = MaskRegions(region.mask, grid)
+    assert len(mr.region_dict) >= 1
+    # cheap sanity: the component masks tile the input mask exactly
     union = None
-    for r in retraced.values():
+    for r in mr.region_dict.values():
         union = r.mask if union is None else (union | r.mask)
     assert bool((union.values == region.mask.values).all())
+
+    # substance: convergence over each component's cells == flux through its boundaries
+    ny, nx = ds.sizes["yh"], ds.sizes["xh"]
+    umo = xr.DataArray(np.sin(0.011 * np.add.outer(np.arange(ny), np.arange(nx + 1))) + 0.3,
+                       dims=("yh", "xq"))
+    vmo = xr.DataArray(np.cos(0.013 * np.add.outer(np.arange(ny + 1), np.arange(nx))) - 0.2,
+                       dims=("yq", "xh"))
+    ds["umo"], ds["vmo"] = umo, vmo
+    conv = -(grid.diff(ds["umo"], "X") + grid.diff(ds["vmo"], "Y"))
+    for r in mr.region_dict.values():
+        interior = float(conv.where(r.mask, 0.).sum())
+        flux = 0.0
+        for b in r.boundaries:
+            t = sec.convergent_transport(grid, b.i_c, b.j_c, f_c=b.f_c,
+                                         utr="umo", vtr="vmo", layer=None,
+                                         positive_in=r.mask)
+            flux += float(t["conv_mass_transport"].sum())
+        assert np.isclose(flux, interior, rtol=1e-9, atol=1e-6)
 
 
 @pytest.mark.skipif(
@@ -85,9 +108,14 @@ def test_mom6_arctic_fold_region_is_single_and_closes_budget():
                         coords={"geolon": ds.geolon, "geolat": ds.geolat})
     seam = ds.sizes["yq"] - 1
 
+    def nbnd(r):
+        return sum(len(np.asarray(b.i_c)) for b in r.boundaries)
+
+    def touches_seam(r):
+        return any((np.asarray(b.j_c) == seam).any() for b in r.boundaries)
+
     def large(grid):
-        return [r for r in MaskRegions(mask, grid).region_dict.values()
-                if len(r.i_c) > 100]
+        return [r for r in MaskRegions(mask, grid).region_dict.values() if nbnd(r) > 100]
 
     grid_extend = xgcm.Grid(ds, coords=coords, padding={"X": "periodic", "Y": "extend"},
                             autoparse_metadata=False)
@@ -97,21 +125,22 @@ def test_mom6_arctic_fold_region_is_single_and_closes_budget():
     big_extend = large(grid_extend)
     big_fold = large(grid_fold)
     # the fold merges the two seam-split halves: fewer large seam-touching regions
-    seam_extend = sum((np.asarray(r.j_c) == seam).any() for r in big_extend)
-    seam_fold = sum((np.asarray(r.j_c) == seam).any() for r in big_fold)
+    seam_extend = sum(touches_seam(r) for r in big_extend)
+    seam_fold = sum(touches_seam(r) for r in big_fold)
     assert seam_fold < seam_extend
     # the single biggest fold region spans the seam (traces across the fold)
-    biggest = max(big_fold, key=lambda r: len(r.i_c))
-    assert (np.asarray(biggest.j_c) == seam).any()
+    biggest = max(big_fold, key=nbnd)
+    assert touches_seam(biggest)
 
     # discrete divergence theorem: boundary heat convergence == volume tendency
     regions = MaskRegions(mask, grid_fold).region_dict
     total = 0.0
     for r in regions.values():
-        dsec = sec.convergent_transport(
-            grid_fold, r.i_c, r.j_c, f_c=r.f_c, utr="T_adx", vtr="T_ady",
-            layer="z_l", interface="z_i", outname="cht", positive_in=r.mask)
-        total += float(dsec["cht"].sum("z_l").isel(time=0).sum(["sect"]).values)
+        for b in r.boundaries:
+            dsec = sec.convergent_transport(
+                grid_fold, b.i_c, b.j_c, f_c=b.f_c, utr="T_adx", vtr="T_ady",
+                layer="z_l", interface="z_i", outname="cht", positive_in=r.mask)
+            total += float(dsec["cht"].sum("z_l").isel(time=0).sum(["sect"]).values)
     dheatdt = (ds["T_advection_xy"] * ds["areacello"]).sum("z_l")
     tend = float(dheatdt.where(mask).sum(["xh", "yh"]).isel(time=0).values)
     assert np.isclose(total, tend, rtol=1e-3)
@@ -149,7 +178,9 @@ def test_ecco_llc90_seam_region_stitches_across_tiles():
 
     regions = MaskRegions(mask, grid).region_dict
     assert len(regions) == 1
-    assert set(np.asarray(regions[0].f_c).tolist()) == {1, 2}
+    faces = set().union(*(set(np.asarray(b.f_c).tolist())
+                          for b in regions[0].boundaries))
+    assert faces == {1, 2}
 
 
 @_requires_ecco
@@ -165,15 +196,16 @@ def test_ecco_atlantic_basin_boundary_and_transports():
 
     mask = atlantic_basin_mask(grid)
     regions = MaskRegions(mask, grid).region_dict
-    basin = max(regions.values(), key=lambda r: len(r.lons_c))
-    faces = set(np.asarray(basin.f_c).tolist())
+    basin = max(regions.values(), key=lambda r: int(r.mask.sum()))
+    faces = set().union(*(set(np.asarray(b.f_c).tolist()) for b in basin.boundaries))
     assert len(faces) >= 4                      # spans many tiles (rotated seams)
 
-    # The basin boundary must be convertible to velocity faces -- this is the
+    # Every boundary loop must be convertible to velocity faces -- this is the
     # strong test: it requires every consecutive corner pair to be grid-adjacent.
-    lons_uv, lats_uv = sec.uvcoords_from_qindices(
-        grid, basin.i_c, basin.j_c, f_c=basin.f_c)
-    assert len(lons_uv) > 0
+    for b in basin.boundaries:
+        lons_uv, lats_uv = sec.uvcoords_from_qindices(
+            grid, b.i_c, b.j_c, f_c=b.f_c)
+        assert len(lons_uv) > 0
 
 
 def _ecco_synthetic_uv(grid):
@@ -221,11 +253,12 @@ def _boundary_flux(grid, mask, umo, vmo):
     total = 0.0
     ds["umo"], ds["vmo"] = umo, vmo
     for r in MaskRegions(mask, grid).region_dict.values():
-        t = sec.convergent_transport(
-            grid, r.i_c, r.j_c, r.f_c, utr="umo", vtr="vmo",
-            layer=None, positive_in=mask,
-        )
-        total += float(t["conv_mass_transport"].sum())
+        for b in r.boundaries:
+            t = sec.convergent_transport(
+                grid, b.i_c, b.j_c, b.f_c, utr="umo", vtr="vmo",
+                layer=None, positive_in=r.mask,
+            )
+            total += float(t["conv_mass_transport"].sum())
     return total
 
 
