@@ -99,8 +99,14 @@ def _pad_center(grid, da):
     `sectionate.gridutils.build_neighbor_maps`."""
     def _seam_or_fill(b):
         return b if (b == "periodic" or _is_fold_boundary(b)) else "fill"
-    padding = {ax: _seam_or_fill(grid.axes[ax].padding) for ax in grid.axes}
-    padding_width = {ax: (1, 1) for ax in grid.axes}
+    # Only pad axes whose dimensions `da` actually carries (issue #24): a center-point
+    # field spans just the horizontal (X/Y) tracer dims, but a 3D `grid` also declares a
+    # Z axis. Padding a Z axis absent from `da.dims` makes `xgcm.pad` raise
+    # `KeyError: None of the DataArray's dims (...) were found in axis coords`.
+    axes = [ax for ax in grid.axes
+            if set(grid.axes[ax].coords.values()) & set(da.dims)]
+    padding = {ax: _seam_or_fill(grid.axes[ax].padding) for ax in axes}
+    padding_width = {ax: (1, 1) for ax in axes}
     return pad(da, grid, padding_width, padding=padding, fill_value=np.nan)
 
 
