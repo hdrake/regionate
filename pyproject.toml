@@ -19,11 +19,9 @@ dependencies = [
     # Needs the bipolar north-fold boundary (formerly xgcm#711) for single-tile
     # tripolar-fold masks/boundaries (see notebook 3), the face_connections
     # halo-padding fix (xgcm#712) for correct multi-tile (lat-lon-cap / cap)
-    # padding, and the other_component vector-pad fix (xgcm#749). These are
-    # consolidated on hdrake/xgcm@dev-v1.0.0; until an xgcm release ships them,
-    # CI installs xgcm from that ref (see .github/workflows/ci.yml); the floor
-    # stays at the satisfiable 0.9.0.
-    "xgcm >= 0.9.0",
+    # padding, and the other_component vector-pad fix (xgcm#749). All three
+    # shipped in the released xgcm >= 0.10.1 (on PyPI), so a plain floor suffices.
+    "xgcm >= 0.10.1",
     "regionmask",
     "contourpy",
     # Requires the topology-driven sectionate API (face_connections- and

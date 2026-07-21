@@ -42,7 +42,7 @@ def construct_grid(ds, fold=False):
         'Y': {'center': 'yh', 'outer': 'yq'},
     }
     # This is a tripolar grid: its northern edge is a bipolar fold, not a wall. Pass
-    # `fold=True` (requires an xgcm with north-fold support, hdrake/xgcm@dev-v1.0.0) to
+    # `fold=True` (requires an xgcm with north-fold support, xgcm >= 0.10.1) to
     # declare it, so `regionate` traces regions straddling the Arctic fold into a single
     # boundary loop (see notebook 3). The default `Y='extend'` treats the fold as a wall,
     # which is adequate for regions away from the Arctic and splits fold-straddling ones in two.

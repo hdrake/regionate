@@ -5,7 +5,7 @@ Requirements
 ^^^^^^^^^^^^
 
 regionate is compatible with python 3 (>= version 3.11). It requires xgcm
-(>= version 0.9.0) and the topology-driven ``sectionate`` API
+(>= version 0.10.1, released on PyPI) and the topology-driven ``sectionate`` API
 (`sectionate#47 <https://github.com/MOM6-community/sectionate/pull/47>`_).
 Until that is released, install ``sectionate`` from the pull-request branch
 first::

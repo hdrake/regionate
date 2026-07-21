@@ -40,22 +40,20 @@ jobs:
       - name: Set up conda environment
         run: |
           mamba env update -f ci/environment.yml
-          # TODO: drop these explicit installs once their upstreams release the required
-          # fixes to PyPI; the floors in pyproject.toml will then suffice.
-          # (2) the topology-driven sectionate API + the outer-lattice multi-tile corner
-          #     topology / exact padded transports. hdrake/sectionate@topology-driven-neighbors
-          #     is the consolidated dev branch carrying this work (formerly PRs #47/#48),
-          #     and gives the most complete multi-tile boundary treatment.
+          # The xgcm floor (xgcm >= 0.10.1 in pyproject.toml) is satisfied straight
+          # from PyPI: 0.10.1 ships the bipolar north-fold boundary (formerly xgcm#711),
+          # the face_connections halo-padding fix (xgcm#712) needed for correct multi-tile
+          # (lat-lon-cap / cap) padding, and the bare-DataArray other_component vector-pad
+          # fix (xgcm#749). So `pip install -e .` below pulls a working xgcm; no git ref.
+          #
+          # TODO: drop the explicit sectionate install below once it releases to PyPI;
+          # the `sectionate >= 0.3.3` floor in pyproject.toml will then suffice.
+          # The topology-driven sectionate API + the outer-lattice multi-tile corner
+          # topology / exact padded transports live on hdrake/sectionate@topology-driven-neighbors
+          # (the consolidated dev branch, formerly PRs #47/#48), the most complete
+          # multi-tile boundary treatment, and are not yet on PyPI.
           python -m pip install "sectionate @ git+https://github.com/hdrake/sectionate.git@topology-driven-neighbors"
           python -m pip install -e .
-          # (1) the xgcm dev-v1.0.0 branch, which consolidates the bipolar north-fold
-          #     boundary (formerly xgcm#711), the face_connections halo-padding fix
-          #     (xgcm#712) needed for correct multi-tile (lat-lon-cap / cap) padding, and
-          #     the bare-DataArray other_component vector-pad fix (xgcm#749) so vector
-          #     diff/interp is correct across rotated/reversed seams. Installed LAST with
-          #     --force-reinstall --no-deps so the git build wins over any PyPI xgcm that
-          #     an earlier step pulled in to satisfy the xgcm>=0.9.0 floors above.
-          python -m pip install --force-reinstall --no-deps "xgcm @ git+https://github.com/hdrake/xgcm.git@dev-v1.0.0"
       - name: Conda list information
         run: |
           conda env list

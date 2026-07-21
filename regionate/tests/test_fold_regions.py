@@ -1,6 +1,6 @@
 """Boundary tracing on a single-tile grid carrying a bipolar/tripolar north fold
-(xgcm ``padding={..., "Y": {"fold": ...}}``, requires the north-fold boundary on
-hdrake/xgcm@dev-v1.0.0).
+(xgcm ``padding={..., "Y": {"fold": ...}}``, requires the north-fold boundary
+released in xgcm >= 0.10.1).
 
 The northern edge folds onto itself: top-row cell ``i`` is the fold-neighbour of
 cell ``Nx-1-i`` (corner pivot, mirror about ``x=0``). A region straddling the fold
