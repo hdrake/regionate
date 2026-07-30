@@ -15,11 +15,6 @@ classifiers = [
 dependencies = [
     "pyproj",
     "geopandas",
-    # `grid_conform.py` calls `regionmask.mask_geopandas`, which does not exist
-    # before regionmask 0.6. Left unbounded, a resolver under backtracking
-    # pressure can pick a pre-0.6 regionmask and the failure surfaces as an
-    # AttributeError at mask time rather than as a resolver error. 0.13 is the
-    # floor the test suite is actually run against.
     "regionmask >= 0.13",
     "contourpy",
     "sectionate >= 0.3.4, < 0.4"
