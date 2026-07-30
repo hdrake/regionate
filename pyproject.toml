@@ -15,7 +15,7 @@ classifiers = [
 dependencies = [
     "pyproj",
     "geopandas",
-    "regionmask",
+    "regionmask >= 0.13",
     "contourpy",
     "sectionate >= 0.3.4, < 0.4"
 ]
