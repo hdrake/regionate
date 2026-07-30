@@ -29,7 +29,9 @@ requirements:
     - python >={{ python_min }}
     - pyproj
     - geopandas
-    - regionmask
+    # See the note in pyproject.toml: `mask_geopandas` requires regionmask 0.6+,
+    # and conda-forge still carries a 0.4.0 that an unpinned spec can select.
+    - regionmask >=0.13
     - contourpy
     - sectionate >=0.3.3
 
