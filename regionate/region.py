@@ -249,14 +249,16 @@ class GriddedRegion(Region):
         """Save the GriddedRegion object in a .gr format file directory
 
         There are two key files within each .gr directory:
-          - a `grid.nc` file that contains information about the coordinates
-          requires to create an `xgcm.Grid` instance
-          - a `region.nc` file that contains the region's tracer cell mask
+
+        - a ``grid.nc`` file that contains information about the coordinates
+          required to create an ``xgcm.Grid`` instance
+        - a ``region.nc`` file that contains the region's tracer cell mask
           and the coordinates and indices of the corner cells that define its
           boundary.
 
         To do:
-          - Subdirectory for child boundary information
+
+        - Subdirectory for child boundary information
 
         Arguments
         ---------

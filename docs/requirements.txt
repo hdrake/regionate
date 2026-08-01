@@ -1,0 +1,19 @@
+# Documentation build dependencies (pip; standardized across hdrake's packages).
+# Kept separate from pyproject.toml on purpose.
+sphinx>=7
+furo
+myst-nb                    # MyST Markdown + notebook rendering (supersedes nbsphinx + myst-parser)
+sphinx-autodoc-typehints
+
+# regionate imports the topology-driven sectionate API (`outer_topology`,
+# `padded_transports`), which is not on PyPI yet -- the released 0.3.4 does not
+# have it, so autodoc would fail to import regionate. Install it from the branch
+# that does (it self-reports 0.3.4, satisfying the pyproject floor).
+# TODO: drop this line once that sectionate line is released to PyPI.
+sectionate @ git+https://github.com/hdrake/sectionate.git@topology-driven-neighbors
+
+# Install the package itself so autodoc can import every module. The relative
+# path resolves against the directory pip runs in, so install from the repo root:
+#     pip install -r docs/requirements.txt
+# Add extras if the package declares any needed for import, e.g. `.[teos10]`.
+.
