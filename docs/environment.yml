@@ -11,7 +11,12 @@ dependencies:
   - netcdf4
   - pydap
   - pytest
-  - sphinx
-  - nbsphinx
   - ipykernel
+  # Docs toolchain (standardized "xeos stack": Sphinx + Furo + myst-nb).
+  # docs/requirements.txt (pip) is authoritative for the docs build; these mirror
+  # it so `make html` works from this conda dev env too.
+  - sphinx>=7
+  - furo
+  - myst-nb
+  - sphinx-autodoc-typehints
   - pip
