@@ -7,6 +7,15 @@ build:
   os: ubuntu-24.04
   tools:
     python: "3.12"
+  jobs:
+    post_checkout:
+      # RTD clones shallow, but installing regionate resolves its version from
+      # the git tag via hatch-vcs, and the docs are titled with it
+      # (`docs/conf.py` reads it from the installed metadata). Without the tag
+      # they would say `.devN`. Tolerate failure: an already-complete clone
+      # makes `--unshallow` an error, which must not fail the build.
+      - git fetch --unshallow || true
+      - git fetch --tags || true
 
 # Build the Sphinx docs. Warnings fail the build (matches CI's -W).
 sphinx:
@@ -16,7 +25,7 @@ sphinx:
 # Don't build any extra output formats.
 formats: []
 
-# pip-based install (conda dropped): the docs toolchain plus xbudget itself,
+# pip-based install (conda dropped): the docs toolchain plus regionate itself,
 # both declared in docs/requirements.txt.
 python:
   install:

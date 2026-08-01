@@ -22,7 +22,7 @@ Adapted from the xgcm draft above; apply these when changing regionate's code.
 2. **Raise on bad input; never return a wrong answer.** regionate already does this — e.g. the corner-coordinate / grid validation the constructors run before building a mask. Keep it up: a silently wrong mask or boundary is worse than an exception in scientific software. On ambiguous/invalid/unsupported input, raise a specific error rather than guessing.
 3. **Do not grow core dependencies.** The core deps are `sectionate` (the sibling that owns grid-section tracing and transports), plus `pyproj`, `geopandas`, `regionmask`, and `contourpy` (see `pyproject.toml`). Prefer pushing grid/transport logic *down into `sectionate`* over adding new dependencies here. Before adding any import, confirm it isn't pulling in a heavy new dependency.
 4. **Every code change ships with tests.** Build test data from the synthetic grid fixtures in `regionate/tests/` (e.g. `initialize_spherical_grid()`) rather than hand-rolling datasets. For a bug fix, first write a test that fails, then make it pass. Exercise both construction directions (boundary→mask via `GriddedRegion`, mask→boundary via `MaskRegions`) and both orientations (clockwise/counterclockwise) where relevant.
-5. **Version by effort; breaking changes are allowed.** Bump `regionate/version.py` (`__version__`, read by hatchling). Favor a clean break (norm 1) over a compatibility shim.
+5. **Version by effort; breaking changes are allowed.** The version comes from the git tag, not from a file in the tree — see "Versioning" below, and do not add a literal back to `regionate/version.py`. Favor a clean break (norm 1) over a compatibility shim.
 
 ## Commands
 
@@ -35,6 +35,18 @@ pip install -e .                                # editable install (after creati
 ```
 
 Dev environment is conda-based (see README). CI (`.github/workflows/ci.yml`) installs `ci/environment.yml`, does `pip install -e .`, then runs `pytest` across Python 3.11–3.14. There is no linter configured.
+
+## Versioning
+
+**The git tag is the single source of truth.** `hatch-vcs` (`[tool.hatch.version] source = "vcs"`) derives the version from the tag at build time and writes it to `regionate/_version.py`, which is **gitignored** — there is no version string in the source tree. `regionate/version.py` is a thin shim that imports from it, with a `0.0.0+unknown` fallback for an un-built checkout.
+
+Consequences worth remembering when editing:
+
+- **Never add a version literal back to the tree**, and never "fix" a `0.0.0+unknown` by hardcoding one — it means the package was imported without being built or installed.
+- **Any CI job that installs the package needs `fetch-depth: 0`.** A shallow clone cannot see the tag, so hatch-vcs silently resolves a `0.1.devN` version instead of failing. The checkouts in `ci.yml` and `publish-to-pypi.yml` set it, and `.readthedocs.yaml` unshallows in `post_checkout` for the same reason. The same applies to a `pip install git+https://…` of a fork with no tags: it reports `0.1.devN`, which can fall below a downstream floor.
+- `_version.py` **is** shipped inside the sdist, so building from the sdist (as conda-forge does) works with no git present. Do not add it to `[tool.hatch.build] exclude`.
+- conda builds run with `--no-build-isolation`, so `hatch-vcs` must sit next to `hatchling` in the recipe's `host` requirements — in `conda/meta.yaml` here and on the conda-forge feedstock.
+- Releasing is just publishing a GitHub Release tagged `vX.Y.Z`; there is no bump commit. See "Releasing" in `README.md`.
 
 ## Architecture
 
