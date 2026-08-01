@@ -137,7 +137,7 @@ class GriddedRegions(Regions):
 
 class MaskRegions(GriddedRegions):
     """
-    A collection of `MaskRegion`s -- one per topology-aware connected component of a
+    A collection of `MaskRegion` objects -- one per topology-aware connected component of a
     cell mask -- whose boundary loops exactly conform to the velocity faces of a
     C-grid ocean model.
     """

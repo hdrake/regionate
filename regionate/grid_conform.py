@@ -173,7 +173,8 @@ def rasterize_per_tile(grid, per_slice):
     ARGUMENTS
     ---------
     grid [xgcm.Grid] -- ocean model grid
-    per_slice [callable] -- ``(lon_2d, lat_2d) -> 2D bool array/DataArray``
+    per_slice [callable] -- maps a pair of 2D lon/lat arrays to a 2D bool array
+        or DataArray of the same shape
 
     RETURNS
     -------
