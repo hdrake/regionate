@@ -16,22 +16,10 @@ dependencies = [
     "pyproj",
     "geopandas",
     "shapely",
-    # Needs the bipolar north-fold boundary (formerly xgcm#711) for single-tile
-    # tripolar-fold masks/boundaries (see notebook 3), the face_connections
-    # halo-padding fix (xgcm#712) for correct multi-tile (lat-lon-cap / cap)
-    # padding, and the other_component vector-pad fix (xgcm#749). All three
-    # shipped in the released xgcm >= 0.10.1 (on PyPI), so a plain floor suffices.
     "xgcm >= 0.10.1",
     "regionmask >= 0.13",
     "contourpy",
-    # Requires the topology-driven sectionate API (face_connections- and
-    # fold-aware neighbour finding, plus the 'left'/rotated-seam corner-neighbour
-    # correction), consolidated on hdrake/sectionate@topology-driven-neighbors.
-    # Until that is released to PyPI, CI installs sectionate from that ref (see
-    # .github/workflows/ci.yml); that branch self-reports 0.3.4, so it satisfies
-    # the floor below. The `< 0.4` cap is inherited from main: sectionate 0.4
-    # renames `boundary` -> `padding`, a breaking change.
-    "sectionate >= 0.3.4, < 0.4"
+    "sectionate >= 0.4.0rc1"
 ]
 
 [project.urls]
