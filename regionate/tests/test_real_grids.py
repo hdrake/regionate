@@ -74,7 +74,7 @@ def test_mom6_global_box_mask_boundary_consistency():
         flux = 0.0
         for b in r.boundaries:
             t = sec.convergent_transport(grid, b.i_c, b.j_c, f_c=b.f_c,
-                                         utr="umo", vtr="vmo", layer=None,
+                                         utr="umo", vtr="vmo",
                                          positive_in=r.mask)
             flux += float(t["conv_mass_transport"].sum())
         assert np.isclose(flux, interior, rtol=1e-9, atol=1e-6)
@@ -139,7 +139,7 @@ def test_mom6_arctic_fold_region_is_single_and_closes_budget():
         for b in r.boundaries:
             dsec = sec.convergent_transport(
                 grid_fold, b.i_c, b.j_c, f_c=b.f_c, utr="T_adx", vtr="T_ady",
-                layer="z_l", interface="z_i", outname="cht", positive_in=r.mask)
+                outname="cht", positive_in=r.mask)
             total += float(dsec["cht"].sum("z_l").isel(time=0).sum(["sect"]).values)
     dheatdt = (ds["T_advection_xy"] * ds["areacello"]).sum("z_l")
     tend = float(dheatdt.where(mask).sum(["xh", "yh"]).isel(time=0).values)
@@ -256,7 +256,7 @@ def _boundary_flux(grid, mask, umo, vmo):
         for b in r.boundaries:
             t = sec.convergent_transport(
                 grid, b.i_c, b.j_c, b.f_c, utr="umo", vtr="vmo",
-                layer=None, positive_in=r.mask,
+                positive_in=r.mask,
             )
             total += float(t["conv_mass_transport"].sum())
     return total

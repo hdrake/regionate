@@ -45,19 +45,6 @@ jobs:
       - name: Set up conda environment
         run: |
           mamba env update -f ci/environment.yml
-          # The xgcm floor (xgcm >= 0.10.1 in pyproject.toml) is satisfied straight
-          # from PyPI: 0.10.1 ships the bipolar north-fold boundary (formerly xgcm#711),
-          # the face_connections halo-padding fix (xgcm#712) needed for correct multi-tile
-          # (lat-lon-cap / cap) padding, and the bare-DataArray other_component vector-pad
-          # fix (xgcm#749). So `pip install -e .` below pulls a working xgcm; no git ref.
-          #
-          # TODO: drop the explicit sectionate install below once it releases to PyPI;
-          # the `sectionate >= 0.3.3` floor in pyproject.toml will then suffice.
-          # The topology-driven sectionate API + the outer-lattice multi-tile corner
-          # topology / exact padded transports live on hdrake/sectionate@topology-driven-neighbors
-          # (the consolidated dev branch, formerly PRs #47/#48), the most complete
-          # multi-tile boundary treatment, and are not yet on PyPI.
-          python -m pip install "sectionate @ git+https://github.com/hdrake/sectionate.git@topology-driven-neighbors"
           python -m pip install -e .
       - name: Conda list information
         run: |
