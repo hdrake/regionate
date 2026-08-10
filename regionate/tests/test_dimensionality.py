@@ -76,3 +76,32 @@ def test_maskregions_ignores_unused_z_axis():
         m2 = regions_2d[key].mask
         m3 = regions_3d[key].mask
         assert np.array_equal(m3.transpose(*m2.dims).values, m2.values)
+
+
+def test_gridded_region_ignores_unused_z_axis():
+    """`GriddedRegion` traces its boundary with `sectionate.grid_section`, which builds
+    topology-aware neighbor maps -- a code path neither `connected_components` nor
+    `MaskRegions` above ever reaches.
+
+    That gap is why this file, written for #24, did not catch the *same* bug in
+    sectionate: `sectionate.gridutils` requested a halo on every registered axis in
+    exactly the way `_pad_center` used to, and a 3D grid raised the same `KeyError`
+    from `grid_section` (MOM6-community/sectionate#52). The two libraries had one bug
+    between them and only one of them was fixed.
+    """
+    grid_2d = initialize_spherical_grid()
+    grid_3d = _add_z_axis(grid_2d)
+
+    # a closed zonal loop around the sphere, as in test_gridded_regions.py
+    lons = np.array([0., 120., 240., 360.])
+    lats = np.array([0., 0., 0., 0.])
+
+    region_2d = regionate.GriddedRegion("box", lons, lats, grid_2d)
+    region_3d = regionate.GriddedRegion("box", lons, lats, grid_3d)  # used to raise
+
+    np.testing.assert_array_equal(region_3d.i_c, region_2d.i_c)
+    np.testing.assert_array_equal(region_3d.j_c, region_2d.j_c)
+    np.testing.assert_array_equal(region_3d.lons_c, region_2d.lons_c)
+    np.testing.assert_array_equal(region_3d.lats_c, region_2d.lats_c)
+    m2, m3 = region_2d.mask, region_3d.mask
+    assert np.array_equal(m3.transpose(*m2.dims).values, m2.values)
