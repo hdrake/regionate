@@ -51,13 +51,11 @@ jobs:
           # (lat-lon-cap / cap) padding, and the bare-DataArray other_component vector-pad
           # fix (xgcm#749). So `pip install -e .` below pulls a working xgcm; no git ref.
           #
-          # TODO: drop the explicit sectionate install below once it releases to PyPI;
-          # the `sectionate >= 0.3.3` floor in pyproject.toml will then suffice.
-          # The topology-driven sectionate API + the outer-lattice multi-tile corner
-          # topology / exact padded transports live on hdrake/sectionate@topology-driven-neighbors
-          # (the consolidated dev branch, formerly PRs #47/#48), the most complete
-          # multi-tile boundary treatment, and are not yet on PyPI.
-          python -m pip install "sectionate @ git+https://github.com/hdrake/sectionate.git@topology-driven-neighbors"
+          # The `sectionate >= 0.4.0rc2` floor is likewise satisfied straight from PyPI:
+          # the topology-driven API and the outer-lattice multi-tile corner topology /
+          # exact padded transports are all in the 0.4.0 pre-releases. A pre-release
+          # floor lets pip install pre-releases of that package, so no `--pre` and no
+          # git ref are needed here either.
           python -m pip install -e .
       - name: Conda list information
         run: |
