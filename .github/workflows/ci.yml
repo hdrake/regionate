@@ -45,17 +45,6 @@ jobs:
       - name: Set up conda environment
         run: |
           mamba env update -f ci/environment.yml
-          # The xgcm floor (xgcm >= 0.10.1 in pyproject.toml) is satisfied straight
-          # from PyPI: 0.10.1 ships the bipolar north-fold boundary (formerly xgcm#711),
-          # the face_connections halo-padding fix (xgcm#712) needed for correct multi-tile
-          # (lat-lon-cap / cap) padding, and the bare-DataArray other_component vector-pad
-          # fix (xgcm#749). So `pip install -e .` below pulls a working xgcm; no git ref.
-          #
-          # The `sectionate >= 0.4.0rc2` floor is likewise satisfied straight from PyPI:
-          # the topology-driven API and the outer-lattice multi-tile corner topology /
-          # exact padded transports are all in the 0.4.0 pre-releases. A pre-release
-          # floor lets pip install pre-releases of that package, so no `--pre` and no
-          # git ref are needed here either.
           python -m pip install -e .
       - name: Conda list information
         run: |
