@@ -1,10 +1,12 @@
 import numpy as np
 import xarray as xr
 
-from .region import Region, GriddedRegion, BoundedRegion, open_gr
-from .boundaries import grid_boundaries_from_mask
+import sectionate as sec
+from .region import Region, GriddedRegion, BoundedRegion, MaskRegion, open_gr
+from .boundaries import grid_boundaries_from_mask, connected_components
 from .overlaps import *
 from .utilities import *
+from sectionate.gridutils import get_geo_corners
 
 import os
 from pathlib import Path
@@ -106,16 +108,14 @@ class GriddedRegions(Regions):
         `GriddedRegions` instance
         """
         self.grid = grid
-        
+
+        if not all(type(v) in [Region, GriddedRegion, BoundedRegion, MaskRegion]
+                   for v in region_dict.values()):
+            raise TypeError(
+                "Values in `region_dict` must be `Region`, `GriddedRegion`, "
+                "`BoundedRegion`, or `MaskRegion` instances."
+            )
         super().__init__(region_dict, name=name)
-        try:
-            if all([type(v) in [Region, GriddedRegion, BoundedRegion] for v in region_dict.values()]):
-                super().__init__(region_dict, name=name)
-            else:
-                raise NameError("""Values in `region_dict` dictionary must be instances of
-                `Region`, `GriddedRegion`, or `BoundedRegion`.""")
-        except:
-            raise NameError("Must provide valid `region_dict` dictionary to initialize.")
 
     def to_grs(self, path):
         """
@@ -137,7 +137,9 @@ class GriddedRegions(Regions):
 
 class MaskRegions(GriddedRegions):
     """
-    A dictionary of polygonal regions that exactly conform to the velocity faces bounding a mask in a C-grid ocean model.
+    A collection of `MaskRegion` objects -- one per topology-aware connected component of a
+    cell mask -- whose boundary loops exactly conform to the velocity faces of a
+    C-grid ocean model.
     """
     def __init__(
         self,
@@ -148,42 +150,60 @@ class MaskRegions(GriddedRegions):
         """
         Create a `MaskRegions` object from a mask and accompanying `xgcm.Grid` instance.
 
+        The mask is first split into connected components on the grid's own
+        seam-aware adjacency (`regionate.boundaries.connected_components`), so each
+        emitted `MaskRegion` owns exactly the cells of one component -- an
+        *unambiguous* mask, rather than the full input mask shared by every region.
+        Each component's boundary is then traced from its own single-component mask
+        (`grid_boundaries_from_mask`), so every returned loop belongs to that
+        component by construction; a component that wraps a seam or has holes simply
+        yields more than one loop.
+
         PARAMETERS
         ----------
-        mask : None or xr.DataArray (default: None)
-            If None, does not apply any mask.
+        mask : xr.DataArray of bool over the grid's tracer-center dims
         grid : `xgcm.Grid` instance
         name : str or None (default: None)
             Overarching name of the collection of regions
 
         RETURNS
         -------
-        `GriddedRegions` instance
+        `MaskRegions` instance -- `.region_dict` maps a component index (int) to a
+        `MaskRegion` (with its own `.mask` and list of `.boundaries`).
         """
-        
-        if any([c not in grid._ds.coords for c in ["geolon_c", "geolat_c"]]):
-            raise ValueError("grid._ds must contain coordinates of grid cell corners, named 'geolon_c' and 'geolat_c'.")
+
+        try:
+            get_geo_corners(grid)
+        except ValueError as e:
+            raise ValueError(
+                "grid._ds must contain two-dimensional cell-corner (vorticity) "
+                'coordinates whose names contain "lon" and "lat".'
+            ) from e
 
         self.grid = grid
-        self.mask = mask
-        
-        i_c_list, j_c_list, lons_c_list, lats_c_list = grid_boundaries_from_mask(
-            self.grid,
-            mask
-        )
+        self.mask = mask.astype(bool)
 
-        region_dict = {
-            r_num: GriddedRegion(
-                str(r_num),
-                lons_c,
-                lats_c,
-                self.grid,
-                mask=mask,
-                ij=(i_c,j_c)
+        labels, ncomp = connected_components(grid, self.mask)
+
+        region_dict = {}
+        for c in range(ncomp):
+            comp_mask = labels == c
+            i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list = (
+                grid_boundaries_from_mask(grid, comp_mask)
             )
-            for r_num, (i_c, j_c, lons_c, lats_c)
-            in enumerate(zip(i_c_list, j_c_list, lons_c_list, lats_c_list))
-        }
+            boundaries = [
+                sec.GriddedSection(
+                    sec.Section(f"{c} boundary {k}", (lons_c, lats_c)),
+                    grid,
+                    i_c=i_c,
+                    j_c=j_c,
+                    f_c=f_c,
+                )
+                for k, (i_c, j_c, f_c, lons_c, lats_c)
+                in enumerate(zip(i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list))
+            ]
+            region_dict[c] = MaskRegion(str(c), grid, comp_mask, boundaries)
+
         super().__init__(region_dict, grid, name=name)
 
 def open_grs(path, ds_to_grid):

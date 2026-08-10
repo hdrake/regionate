@@ -18,7 +18,7 @@ def download_MOM6_example_data(file_name):
 
     return destination_path
 
-def load_MOM6_example_grid(file_name):
+def load_MOM6_example_grid(file_name, fold=False):
     destination_path = download_MOM6_example_data(file_name)
     ds = xr.open_dataset(destination_path).fillna(0.)
     if "z_l" not in ds.dims:
@@ -26,22 +26,27 @@ def load_MOM6_example_grid(file_name):
             "z_l":xr.DataArray([3000], dims=("z_l",)),
             "z_i":xr.DataArray([0,6000], dims=("z_i",))
         })
-    return construct_grid(ds)
+    return construct_grid(ds, fold=fold)
 
-def load_MOM6_zint_mass_budget():
+def load_MOM6_zint_mass_budget(fold=False):
     file_name = 'MOM6_global_example_vertically_integrated_mass_budget_v0_0_6.nc'
-    return load_MOM6_example_grid(file_name)
+    return load_MOM6_example_grid(file_name, fold=fold)
 
-def load_MOM6_zint_heat_budget():
+def load_MOM6_zint_heat_budget(fold=False):
     file_name = 'MOM6_global_example_vertically_integrated_heat_budget_v0_0_6.nc'
-    return load_MOM6_example_grid(file_name)
+    return load_MOM6_example_grid(file_name, fold=fold)
 
-def construct_grid(ds):
+def construct_grid(ds, fold=False):
     coords={
         'X': {'center': 'xh', 'outer': 'xq'},
         'Y': {'center': 'yh', 'outer': 'yq'},
     }
-    boundary = {'X':'periodic', 'Y':'extend'}
+    # This is a tripolar grid: its northern edge is a bipolar fold, not a wall. Pass
+    # `fold=True` (requires an xgcm with north-fold support, xgcm >= 0.10.1) to
+    # declare it, so `regionate` traces regions straddling the Arctic fold into a single
+    # boundary loop (see notebook 3). The default `Y='extend'` treats the fold as a wall,
+    # which is adequate for regions away from the Arctic and splits fold-straddling ones in two.
+    padding = {'X':'periodic', 'Y':({'fold':'corner'} if fold else 'extend')}
     metrics = {('X','Y'):'areacello'}
-    grid = xgcm.Grid(ds, coords=coords, metrics=metrics, boundary=boundary, autoparse_metadata=False)
+    grid = xgcm.Grid(ds, coords=coords, metrics=metrics, padding=padding, autoparse_metadata=False)
     return grid

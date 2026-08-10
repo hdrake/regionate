@@ -1,9 +1,20 @@
 import xarray as xr
 
 def check_global_coverage(regions):
-    """Check whether the masks in the `Regions` instance are non-overlapping and provide complete global coverage"""
-    total_mask = xr.zeros_like(list(regions.region_dict.values())[0].mask)
-    for r in regions.region_dict.values():
-        total_mask += r.mask
-    if (total_mask == 1).sum() != total_mask.size:
-        ValueError(f"Region {r.name} has incomplete or imperfect global coverage.")
+    """Raise if the region masks do not partition the domain.
+
+    A valid partition covers every cell exactly once: each cell must be claimed by
+    exactly one region's mask, with no gaps (cells claimed by none) and no overlaps
+    (cells claimed by more than one).
+    """
+    masks = [r.mask for r in regions.region_dict.values()]
+    coverage = xr.zeros_like(masks[0], dtype=int)
+    for m in masks:
+        coverage += m.astype(int)
+    n_gap = int((coverage == 0).sum())
+    n_overlap = int((coverage > 1).sum())
+    if n_gap or n_overlap:
+        raise ValueError(
+            f"Region masks do not partition the domain: {n_gap} cell(s) covered by "
+            f"no region and {n_overlap} cell(s) covered by more than one region."
+        )

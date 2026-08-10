@@ -15,9 +15,11 @@ classifiers = [
 dependencies = [
     "pyproj",
     "geopandas",
+    "shapely",
+    "xgcm >= 0.10.1",
     "regionmask >= 0.13",
     "contourpy",
-    "sectionate >= 0.3.4, < 0.4"
+    "sectionate >= 0.4.0rc2"
 ]
 
 [project.urls]

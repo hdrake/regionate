@@ -3,8 +3,17 @@
 ## Requirements
 
 regionate is compatible with python 3 (>= version 3.11). It requires
-[xgcm](https://xgcm.readthedocs.io/en/stable/) and its sibling package
+[xgcm](https://xgcm.readthedocs.io/en/stable/) (>= 0.10.1, which ships the
+bipolar north-fold boundary and the multi-tile `face_connections` padding fixes)
+and the topology-driven API of its sibling package
 [sectionate](https://github.com/MOM6-community/sectionate).
+
+The topology-driven sectionate API is not on PyPI yet, so install it from its
+development branch first:
+
+```bash
+pip install "sectionate @ git+https://github.com/hdrake/sectionate.git@topology-driven-neighbors"
+```
 
 ## From conda-forge
 

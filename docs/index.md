@@ -10,6 +10,11 @@ or heat budget integrated over the masked region is exactly consistent with the
 fluxes through its boundary — the property that makes closed regional budgets
 possible.
 
+All grid logic is driven by the grid's own topology, so this works on **arbitrary
+`xgcm.Grid` topologies**: single-tile periodic grids, bipolar-fold (Arctic) MOM6
+grids, and genuinely multi-tile grids defined by `face_connections` (e.g. the
+ECCOv4r4 lat-lon-cap grid, cubed spheres).
+
 It leans on its sibling package
 [`sectionate`](https://github.com/MOM6-community/sectionate) for the
 section- and face-tracing math, and builds on
@@ -29,6 +34,8 @@ examples/1_thickness_budget
 examples/2_advective_heat_convergence
 examples/3_Arctic_heat_CM4p25
 examples/4_bounded_by_named_sections
+examples/5_ECCO_LLC90_multiface_regions
+examples/6_idealized_corner_cases
 contributing
 api
 ```

@@ -92,6 +92,8 @@ DOC_NOTEBOOKS = [
     "2_advective_heat_convergence.ipynb",
     "3_Arctic_heat_CM4p25.ipynb",
     "4_bounded_by_named_sections.ipynb",
+    "5_ECCO_LLC90_multiface_regions.ipynb",
+    "6_idealized_corner_cases.ipynb",
 ]
 
 
