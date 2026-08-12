@@ -19,7 +19,10 @@ dependencies = [
     "xgcm >= 0.10.1",
     "regionmask >= 0.13",
     "contourpy",
-    "sectionate >= 0.4.0rc2"
+    # Needs the corner-topology API (`sectionate.topology`), which is not in any
+    # release yet: it is the PR this one is built on. Until it ships, install
+    # sectionate from that branch; the floor below is what to require once it does.
+    "sectionate >= 0.5.0"
 ]
 
 [project.urls]

@@ -82,6 +82,47 @@ def download_ECCO_geometry(data_dir="../data"):
     return download_ECCO_data(ECCO_GEOMETRY_FILE, data_dir=data_dir)
 
 
+# The LLC90 domain's southern edge folds onto itself, along the great circle
+# through 65E and 115W under Antarctica. `face_connections` declares those four
+# tile edges as `None` -- walls -- because its schema maps a whole tile edge to a
+# whole tile edge, and this edge is glued to several partners over different index
+# ranges: tile 0's runs into tile 3's, tile 9's and tile 12's in turn, and two of
+# them fold onto themselves at the pivots. So one line of physical corners is
+# stored twice with nothing in the metadata to say the two copies are the same
+# point, and a region straddling it cannot close.
+#
+# Each block below is an affine map on the 'outer' corner lattice, `k -> const - k`
+# along the named edge. Together they merge 179 corner pairs; every merged pair is
+# bit-identically coincident in the archived coordinates (`validate_positions()`
+# returns 0.0 m), which is a check on the declaration rather than its source.
+LLC90_SOUTHERN_FOLD_BLOCKS = [
+    #  (face, edge,     range,        face, edge,     const)
+    (0,  "Y_low",  range(91),      3,  "Y_low",  116),
+    (3,  "Y_low",  range(27),      3,  "Y_low",   26),
+    (0,  "Y_low",  range(27),      9,  "X_high",  26),
+    (9,  "X_high", range(91),      12, "X_high", 116),
+    (12, "X_high", range(27),      12, "X_high",  26),
+]
+
+
+def llc90_southern_fold(n=91):
+    """The LLC90 southern boundary fold, as explicit corner identifications."""
+    from sectionate.topology import Identification
+
+    def slot(f, edge, k):
+        return (f, 0, k) if edge == "Y_low" else (f, k, n - 1)
+
+    out = []
+    for fa, ea, ks, fb, eb, const in LLC90_SOUTHERN_FOLD_BLOCKS:
+        ks = [k for k in ks if 0 <= const - k < n]
+        out.append(Identification(
+            [slot(fa, ea, k) for k in ks],
+            [slot(fb, eb, const - k) for k in ks],
+            name=f"LLC90 southern fold {fa}.{ea} <-> {fb}.{eb}",
+        ))
+    return out
+
+
 def load_ECCO_LLC90_grid(data_dir="../data"):
     """Load the ECCOv4r4 LLC90 grid as a native (MITgcm 'left'-staggered)
     ``xgcm.Grid``.
@@ -97,12 +138,16 @@ def load_ECCO_LLC90_grid(data_dir="../data"):
     ds = xr.open_dataset(path)
     ds = ds.rename({"XC": "geolon", "YC": "geolat",
                     "XG": "geolon_c", "YG": "geolat_c"})
-    return xgcm.Grid(
+    from sectionate.topology import declare_identifications
+
+    grid = xgcm.Grid(
         ds, padding="fill", autoparse_metadata=False,
         coords={"X": {"center": "i", "left": "i_g"},
                 "Y": {"center": "j", "left": "j_g"}},
         face_connections=LLC90_FACE_CONNECTIONS,
     )
+    declare_identifications(grid, llc90_southern_fold())
+    return grid
 
 
 # Natural Earth ocean basins that make up the Atlantic sector (open Atlantic plus

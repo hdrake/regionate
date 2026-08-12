@@ -73,7 +73,7 @@ def grid_boundaries_from_mask(grid, mask):
 
 def _remap_contour(c, o):
     """Map one `contourpy` polyline (center coordinates, first==last) to closed
-    cell-corner index arrays `(i_c, j_c)`, with the corner-position offset `o`
+    cell-corner index arrays `(i_c, j_c)`, with the corner offset `o`
     (always 1 here: the corner topology is indexed on the 'outer' lattice)."""
     i_c, j_c = c[:-1, 0], c[:-1, 1]
     i_n, j_n = i_c.copy(), j_c.copy()
@@ -95,7 +95,7 @@ def _pad_center(grid, da):
     with NaN. Coercing non-seam boundaries to ``'fill'`` matters: ``'extend'`` would
     otherwise *replicate* the edge cell, so a wall segment would see an in-mask
     "neighbour" and be wrongly dropped as an interior seam. Mirrors
-    `sectionate.gridutils.build_neighbor_maps`."""
+    `sectionate.topology.CornerTopology`."""
     def _seam_or_fill(b):
         return b if (b == "periodic" or _is_fold_boundary(b)) else "fill"
     # Only pad axes whose dimensions `da` actually carries (issue #24): a center-point
@@ -227,7 +227,7 @@ _SEG_CELLS = {
 
 
 def _trace_and_drop(grid, mask):
-    """Shared front-end for both back-ends.
+    """Front-end for `_boundaries_from_arcs`.
 
     `contourpy`-trace the mask per face (a single synthetic face for single-tile
     grids) and drop every boundary segment that lies on a seam between two in-mask

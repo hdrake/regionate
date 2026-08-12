@@ -147,10 +147,12 @@ class GriddedRegion(Region):
             Default: True. If True, prunes any duplicate points from the input arrays (lons, lats).
         mask : None or xr.DataArray (default: None)
             If None, does not apply any mask.
-        ij : None or list
-            If None, the indices of grid coordinates closest to provided coordinates `self.i_c` and `self.j_c`
-            are inferred from the model grid. If list, assume two elements in the list and
-            extract `self.i_c = ij[0]` and `self.j_c = ij[1]`.
+        ij : None or sequence
+            If None, the boundary is snapped onto the grid and the corner indices are
+            inferred from it. Otherwise ``(i_c, j_c, f_c)``: the corner indices to use
+            directly, with the face each corner belongs to. A single-tile grid is one
+            face, so pass zeros there rather than omitting it -- the shape does not
+            depend on the shape of the grid.
         curve : str
             Curve followed between consecutive boundary vertices when snapping the
             polygon onto the grid. Default: ``"great circle"`` (the geodesic), which
@@ -197,9 +199,13 @@ class GriddedRegion(Region):
         else:
             self.lons_c = lons
             self.lats_c = lats
-            self.i_c = ij[0]
-            self.j_c = ij[1]
-            self.f_c = ij[2]
+            if len(ij) != 3:
+                raise ValueError(
+                    f"`ij` must be (i_c, j_c, f_c); got {len(ij)} element(s). The "
+                    "face index is no longer optional -- a single-tile grid is one "
+                    "face, so pass zeros for it."
+                )
+            self.i_c, self.j_c, self.f_c = ij[0], ij[1], ij[2]
             if mask is None:
                 self.mask = mask_from_grid_boundaries(
                     self.lons_c,
@@ -288,8 +294,7 @@ class GriddedRegion(Region):
         ds['lats_c'] = xr.DataArray(np.asarray(self.lats_c), dims=('vertex',))
         ds['i_c'] = xr.DataArray(np.asarray(self.i_c), dims=('corner',))
         ds['j_c'] = xr.DataArray(np.asarray(self.j_c), dims=('corner',))
-        if True:
-            ds['f_c'] = xr.DataArray(np.asarray(self.f_c), dims=('corner',))
+        ds['f_c'] = xr.DataArray(np.asarray(self.f_c), dims=('corner',))
         for v in ['lons_uv', 'lats_uv']:
             if getattr(self, v, None) is not None:
                 ds[v] = xr.DataArray(np.asarray(getattr(self, v)), dims=('face',))

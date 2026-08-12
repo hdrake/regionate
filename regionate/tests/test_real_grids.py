@@ -227,7 +227,7 @@ def _ecco_synthetic_uv(grid):
 def _ecco_convergence(grid, umo, vmo):
     """Cell convergence from the native transports via the outer corner topology.
 
-    ``sectionate.gridutils.outer_topology(grid).padded_transports`` resolves each
+    ``sectionate.topology.corner_topology(grid).padded_transports`` resolves each
     face's missing edge slots to the *stored* velocity of that physical edge, so
     the convergence telescopes exactly: its global sum is identically zero and it
     is exactly consistent with boundary fluxes read from the same native arrays.

@@ -1,1 +1,0 @@
-/Users/hfdrake/code/sectionate/data/MOM6_global_example_sigma2_budgets_v0_0_6.nc
