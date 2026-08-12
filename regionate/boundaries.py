@@ -8,7 +8,7 @@ from scipy.sparse.csgraph import connected_components as _connected_components_c
 from xgcm.padding import pad
 try:
     # north-fold boundary detector; only present in xgcm with north-fold support (xgcm#711)
-    from xgcm.padding import _is_fold_boundary
+    from xgcm.padding import _is_fold_padding as _is_fold_boundary
 except ImportError:  # pragma: no cover - fall back so `import regionate` works on any xgcm
     from collections.abc import Mapping
 
@@ -18,7 +18,6 @@ except ImportError:  # pragma: no cover - fall back so `import regionate` works 
 from .utilities import loop
 from sectionate.gridutils import (
     get_facedim,
-    get_geo_corners,
     coord_dict,
 )
 from sectionate.topology import corner_topology
@@ -94,8 +93,18 @@ def _pad_center(grid, da):
     across-seam halo cells; every other boundary (walls, ``'extend'``, ...) is padded
     with NaN. Coercing non-seam boundaries to ``'fill'`` matters: ``'extend'`` would
     otherwise *replicate* the edge cell, so a wall segment would see an in-mask
-    "neighbour" and be wrongly dropped as an interior seam. Mirrors
-    `sectionate.topology.CornerTopology`."""
+    "neighbour" and be wrongly dropped as an interior seam.
+
+    **This diverges from `sectionate.topology.CornerTopology` and that matters.**
+    It reads the grid's own metadata only, so it does not see identifications
+    declared through `sectionate.topology.declare_identifications` -- LLC90's
+    southern boundary fold, for one. Cells either side of such a seam look
+    unconnected here, so `connected_components` splits a component that spans it.
+    The boundary tracer is unaffected, because it annihilates the doubly-traced
+    edges within a single trace, so budgets still close; it is region *identity*
+    that is wrong. On LLC90 the cells concerned are Antarctic land, which is why
+    nothing observes it yet. The fix is to take cell adjacency from the corner
+    topology, which has seen those identifications."""
     def _seam_or_fill(b):
         return b if (b == "periodic" or _is_fold_boundary(b)) else "fill"
     # Only pad axes whose dimensions `da` actually carries (issue #24): a center-point
@@ -397,8 +406,11 @@ def _boundaries_from_arcs(grid, arcs, closed, nf, Nyc, Nxc):
             k = int(np.where(nat[:, 0] < 0)[0][0])
             raise ValueError(
                 "Mask boundary passes through a grid corner that is not stored on "
-                f"any face (near lon={ot.node_lon[lp[k]]:.2f}, "
-                f"lat={ot.node_lat[lp[k]]:.2f}); it cannot be expressed in native "
+                f"any face (corner slot {tuple(int(x) for x in ot.reps_of(lp[k])[0])}"
+                + (f", near lon={ot.node_lon[lp[k]]:.2f}, lat={ot.node_lat[lp[k]]:.2f}"
+                   if ot.node_position_known[lp[k]]
+                   else ", whose position the grid does not determine either")
+                + "); it cannot be expressed in native "
                 "(i_c, j_c, f_c) indices."
             )
         f_c_list.append(nat[:, 0].astype(np.int64))

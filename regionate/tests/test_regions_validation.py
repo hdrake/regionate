@@ -121,3 +121,57 @@ def test_gr_child_roundtrip_preserves_gridded_indices(tmp_path):
     assert isinstance(cr, sec.GriddedSection)
     assert np.array_equal(np.asarray(cr.i_c), np.asarray(region.i_c[:4]))
     assert np.array_equal(np.asarray(cr.j_c), np.asarray(region.j_c[:4]))
+
+
+def test_ij_requires_the_face_index_and_says_so():
+    """
+    `ij` is `(i_c, j_c, f_c)` on every grid. A single-tile grid is one face, so the
+    face index is zeros there rather than omitted -- the shape of the answer does not
+    depend on the shape of the grid. Passing the old 2-tuple used to raise
+    `IndexError` from inside the constructor.
+    """
+    import pytest
+    from regionate.region import GriddedRegion
+
+    grid = initialize_spherical_grid()
+    lons = np.array([0., 60., 60., 0., 0.])
+    lats = np.array([-20., -20., 20., 20., -20.])
+    ok = GriddedRegion("ok", lons, lats, grid)
+
+    with pytest.raises(ValueError, match=r"must be \(i_c, j_c, f_c\)"):
+        GriddedRegion("bad", lons, lats, grid, ij=(ok.i_c, ok.j_c))
+
+    same = GriddedRegion("same", lons, lats, grid, ij=(ok.i_c, ok.j_c, ok.f_c))
+    np.testing.assert_array_equal(same.f_c, np.zeros_like(same.i_c))
+
+
+def test_a_gr_file_written_before_f_c_still_loads_and_round_trips(tmp_path):
+    """
+    A `.gr` written before the face index was persisted describes a single-tile
+    region, and a single-tile grid is one face -- so it loads with `f_c` zeros,
+    which is both the right value and the only one the constructor now accepts.
+    It used to load as `None` and then fail opaquely on the next save.
+    """
+    import xarray as xr
+    from regionate.region import GriddedRegion, open_gr
+
+    grid = initialize_spherical_grid()
+    lons = np.array([0., 60., 60., 0., 0.])
+    lats = np.array([-20., -20., 20., 20., -20.])
+    region = GriddedRegion("legacy", lons, lats, grid)
+
+    region.to_gr(str(tmp_path))
+    written = list(tmp_path.rglob("region.nc"))
+    assert len(written) == 1, f"unexpected .gr layout: {written}"
+    # strip `f_c`, as a file written before it was persisted would not have it
+    with xr.open_dataset(str(written[0])) as ds:
+        stripped = ds.drop_vars("f_c").load()
+        assert "f_c" in ds
+    tmp = written[0].with_suffix(".tmp.nc")
+    stripped.to_netcdf(str(tmp))
+    tmp.replace(written[0])
+
+    # `open_gr` takes a *callable* that rebuilds the grid from the stored dataset
+    back = open_gr(str(written[0].parent), lambda _ds: grid)
+    np.testing.assert_array_equal(back.f_c, np.zeros_like(back.i_c))
+    back.to_gr(str(tmp_path / "again"))            # must not raise

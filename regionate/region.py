@@ -513,7 +513,10 @@ def _open_mask_region_gr(path, name, grid, ds):
     boundaries = []
     for d in loop_dirs:
         dsb = xr.open_dataset(f"{bnd_path}/{d}/section.nc")
-        f_c = dsb.f_c.values if 'f_c' in dsb else None
+        # A file written before `f_c` was persisted is single-tile, and a
+        # single-tile grid is one face -- so zeros is the right value, and the
+        # only one `GriddedRegion` will now accept.
+        f_c = dsb.f_c.values if 'f_c' in dsb else np.zeros_like(dsb.i_c.values)
         boundaries.append(sec.GriddedSection(
             sec.Section(d[:-4], sec.coords_from_lonlat(dsb.lons_c.values, dsb.lats_c.values)),
             grid, i_c=dsb.i_c.values, j_c=dsb.j_c.values, f_c=f_c,
@@ -538,7 +541,7 @@ def open_gr(path, ds_to_grid):
     if ds.attrs.get('kind') == 'MaskRegion' or os.path.isdir(f"{path}/boundaries"):
         return _open_mask_region_gr(path, name, grid, ds)
 
-    f_c = ds.f_c.values if 'f_c' in ds else None
+    f_c = ds.f_c.values if 'f_c' in ds else np.zeros_like(ds.i_c.values)
     region = GriddedRegion(
         name,
         ds.lons_c.values,
@@ -570,7 +573,7 @@ def open_gr(path, ds_to_grid):
         # reconstruct the child as a gridded section carrying its stored corner
         # indices (i_c/j_c/f_c), mirroring how `BoundedRegion` builds children --
         # rather than discarding them and rebuilding a bare `sec.Section` from coords.
-        child_f_c = ds.f_c.values if 'f_c' in ds else None
+        child_f_c = ds.f_c.values if 'f_c' in ds else np.zeros_like(ds.i_c.values)
         section = sec.GriddedSection(
             sec.Section(
                 child_name,
