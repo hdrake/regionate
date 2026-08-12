@@ -8,7 +8,6 @@ from .utilities import *
 from .grid_conform import (
     get_region_boundary_grid_indices,
     mask_from_grid_boundaries,
-    _normalize_grid_section,
 )
 
 import os
@@ -200,7 +199,7 @@ class GriddedRegion(Region):
             self.lats_c = lats
             self.i_c = ij[0]
             self.j_c = ij[1]
-            self.f_c = ij[2] if len(ij) > 2 else None
+            self.f_c = ij[2]
             if mask is None:
                 self.mask = mask_from_grid_boundaries(
                     self.lons_c,
@@ -289,7 +288,7 @@ class GriddedRegion(Region):
         ds['lats_c'] = xr.DataArray(np.asarray(self.lats_c), dims=('vertex',))
         ds['i_c'] = xr.DataArray(np.asarray(self.i_c), dims=('corner',))
         ds['j_c'] = xr.DataArray(np.asarray(self.j_c), dims=('corner',))
-        if getattr(self, 'f_c', None) is not None:
+        if True:
             ds['f_c'] = xr.DataArray(np.asarray(self.f_c), dims=('corner',))
         for v in ['lons_uv', 'lats_uv']:
             if getattr(self, v, None) is not None:
@@ -364,7 +363,7 @@ class BoundedRegion(GriddedRegion):
         parent_coords_uv = sec.coords_from_lonlat(parent_lons_uv, parent_lats_uv)
             
         for child_name, child in section.children.items():
-            i_c, j_c, f_c, lons_c, lats_c = _normalize_grid_section(
+            i_c, j_c, f_c, lons_c, lats_c = (
                 sec.grid_section(grid, child.lons_c, child.lats_c, curve=curve)
             )
 
@@ -381,7 +380,7 @@ class BoundedRegion(GriddedRegion):
                     child.lons_c = child.lons_c[::-1]
                     child.lats_c = child.lats_c[::-1]
                     # recompute the child sections using the correct orientation
-                    i_c, j_c, f_c, lons_c, lats_c = _normalize_grid_section(
+                    i_c, j_c, f_c, lons_c, lats_c = (
                         sec.grid_section(grid, child.lons_c, child.lats_c, curve=curve)
                     )
                 else:

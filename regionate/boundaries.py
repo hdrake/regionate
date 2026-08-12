@@ -20,9 +20,8 @@ from sectionate.gridutils import (
     get_facedim,
     get_geo_corners,
     coord_dict,
-    corner_offset,
-    outer_topology,
 )
+from sectionate.topology import corner_topology
 
 
 def grid_boundaries_from_mask(grid, mask):
@@ -38,15 +37,17 @@ def grid_boundaries_from_mask(grid, mask):
     All cases share one front-end (`_trace_and_drop`): `contourpy` traces the mask per
     face, and boundary segments lying on a seam between two in-mask cells are dropped
     as interior (using the grid's own topology-aware halo, `_pad_center`). The surviving
-    arcs are then stitched into closed loops by one of two back-ends:
+    arcs are then stitched into closed loops on the grid's corner topology
+    (`sectionate.topology.corner_topology`): every traced corner resolves to a physical
+    corner *node*, arcs join by node identity -- uniform across a periodic wrap, a
+    bipolar fold, rotated and reversed tile seams, and cube-vertex junctions -- and each
+    node is emitted as the native corner that stores it, with its face index `f_c`.
 
-    - single-tile (periodic and/or walled, incl. the fold) -- stitched by physical
-      coincidence at the seam; face index `f_c` is ``None``;
-    - multi-tile (`face_connections`) -- stitched on the grid's outer (shared-corner)
-      lattice from `sectionate.gridutils.outer_topology`: every traced corner resolves
-      to a physical corner *node*, arcs join by node identity (uniform across rotated
-      and reversed seams, cube-vertex junctions, and grid cuts/folds), and each node is
-      emitted as the native corner that stores it, with its face index `f_c`.
+    One back-end, for every grid. A single-tile grid used to be stitched separately, by
+    matching rounded positions on the unit sphere, which meant this package and
+    `sectionate` had to agree on a coincidence tolerance and did not; it also merged
+    corners a grid distinguishes but happens to place at one point, which is what a
+    tripolar cap's singular meridian does to a whole column of them.
 
     In every case the returned loops' corners map cleanly to velocity faces via
     `sectionate.uvindices_from_qindices`, so integrating a flux over the boundary
@@ -54,8 +55,8 @@ def grid_boundaries_from_mask(grid, mask):
     loop *set* -- an annulus, fold, or multi-tile region may return several loops).
 
     Returns lists with a common length equal to the number of discrete boundary loops.
-    `f_c_list` holds the per-corner face index for multi-tile grids; entries are
-    ``None`` for single-tile grids (including fold grids).
+    `f_c_list` holds the per-corner face index; a single-tile grid is one face, so it
+    is zeros there rather than ``None``.
 
     ARGUMENTS
     ---------
@@ -67,15 +68,13 @@ def grid_boundaries_from_mask(grid, mask):
     i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list
     """
     arcs, closed, nf, Nyc, Nxc = _trace_and_drop(grid, mask)
-    if get_facedim(grid) is not None:
-        return _multitile_boundaries_from_mask(grid, arcs, closed, nf, Nyc, Nxc)
-    return _single_tile_boundaries_from_mask(grid, arcs, closed)
+    return _boundaries_from_arcs(grid, arcs, closed, nf, Nyc, Nxc)
 
 
 def _remap_contour(c, o):
     """Map one `contourpy` polyline (center coordinates, first==last) to closed
     cell-corner index arrays `(i_c, j_c)`, with the corner-position offset `o`
-    (1 for 'outer'/'left', 0 for 'right'; see `corner_offset`)."""
+    (always 1 here: the corner topology is indexed on the 'outer' lattice)."""
     i_c, j_c = c[:-1, 0], c[:-1, 1]
     i_n, j_n = i_c.copy(), j_c.copy()
     i_inc = np.roll(i_c, -1) - i_c
@@ -243,10 +242,10 @@ def _trace_and_drop(grid, mask):
     facedim = get_facedim(grid)
     cdict = coord_dict(grid)
     Xc, Yc = cdict["X"]["center"], cdict["Y"]["center"]
-    # Single-tile: corner indices in the native frame. Multi-tile: always in the
-    # outer-lattice frame (`o=1`, corner k between cells k-1 and k), which is what
-    # `outer_topology`'s node grid is indexed by, whatever the native staggering.
-    o = 1 if facedim is not None else 1 - corner_offset(grid)
+    # Corner indices in the 'outer'-lattice frame (`o = 1`, corner k between cells
+    # k-1 and k), which is what the corner topology's node grid is indexed by --
+    # on every grid, whatever its native staggering.
+    o = 1
 
     if facedim is None:
         mask = mask.transpose(Yc, Xc)
@@ -299,72 +298,18 @@ def _trace_and_drop(grid, mask):
     return arcs, closed, nf, Nyc, Nxc
 
 
-def _single_tile_boundaries_from_mask(grid, arcs, closed):
-    """Single-tile back-end: stitch arcs into closed loops by physical coincidence at
-    the seam. This handles walls, periodic axes, and the bipolar north fold uniformly:
-    a region touching no seam traces exactly as a plain `contourpy` contour, while a
-    region wrapping the periodic-X seam or straddling the fold is stitched into one
-    seam-consistent loop whose crossings are expressed through *coincident* seam corners
-    -- the form `sectionate` collapses to zero-length (dropped) faces. `f_c` is
-    ``None`` (single tile)."""
-    cdict = coord_dict(grid)
-    Xq, Yq = cdict["X"]["corner"], cdict["Y"]["corner"]
-    geo = get_geo_corners(grid)
-    lon_c = geo["X"].transpose(Yq, Xq).values
-    lat_c = geo["Y"].transpose(Yq, Xq).values
 
-    def lockey(node):
-        # physical position on the unit sphere: robust to longitude wrap (a coincident
-        # seam corner may read 180 vs -180) and to the pole. Matches the physical
-        # coincidence `sectionate` itself uses to collapse zero-length seam faces.
-        _, jq, iq = node
-        la, lo = np.deg2rad(float(lat_c[jq, iq])), np.deg2rad(float(lon_c[jq, iq]))
-        return (round(np.cos(la) * np.cos(lo), 9),
-                round(np.cos(la) * np.sin(lo), 9),
-                round(np.sin(la), 9))
+def _boundaries_from_arcs(grid, arcs, closed, nf, Nyc, Nxc):
+    """Stitch the traced arcs into closed loops on the grid's corner topology.
 
-    ends = {}
-    for ai, arc in enumerate(arcs):
-        ends.setdefault(lockey(arc[0]), []).append((ai, True))
-        ends.setdefault(lockey(arc[-1]), []).append((ai, False))
-    used = [False] * len(arcs)
-    loops = [lp + [lp[0]] for lp in closed]  # close the open-cyclic no-seam contours
-    for a0 in range(len(arcs)):
-        if used[a0]:
-            continue
-        lp, ai, at_start = [], a0, True
-        while not used[ai]:
-            used[ai] = True
-            seg = arcs[ai] if at_start else arcs[ai][::-1]
-            lp.extend(seg)  # keep BOTH coincident seam corners at each junction
-            nxt = [(a, w) for (a, w) in ends.get(lockey(seg[-1]), []) if not used[a]]
-            if not nxt:
-                break
-            ai, at_start = nxt[0]
-        if lp[0] != lp[-1]:
-            lp.append(lp[0])  # close (a coincident/zero-length edge sectionate drops)
-        loops.append(lp)
-
-    i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list = [], [], [], [], []
-    for lp in loops:
-        j_c = np.array([n[1] for n in lp], dtype=np.int64)
-        i_c = np.array([n[2] for n in lp], dtype=np.int64)
-        i_c_list.append(i_c)
-        j_c_list.append(j_c)
-        f_c_list.append(None)
-        lons_c_list.append(np.array([float(lon_c[n[1], n[2]]) for n in lp[:-1]]))
-        lats_c_list.append(np.array([float(lat_c[n[1], n[2]]) for n in lp[:-1]]))
-    return i_c_list, j_c_list, f_c_list, lons_c_list, lats_c_list
-
-
-def _multitile_boundaries_from_mask(grid, arcs, closed, nf, Nyc, Nxc):
-    """Multi-tile back-end: stitch the traced arcs into loops on the grid's outer
-    (shared-corner) corner topology (`sectionate.gridutils.outer_topology`).
-
-    Every traced corner -- given by `_trace_and_drop` in the outer-lattice frame
-    ``(f, jg, ig)`` -- resolves to a physical corner *node*, which is uniform
-    across rotated/reversed seams, 4-face cube-vertex junctions, the pole, and
-    grid cuts/folds. Stitching is then simply:
+    One back-end for every grid. Every traced corner -- given by `_trace_and_drop`
+    in the 'outer'-lattice frame ``(f, jg, ig)`` -- resolves to a physical corner
+    *node*, and that is uniform across a periodic wrap, a bipolar fold, rotated or
+    reversed tile seams, and cube-vertex junctions alike. There is nothing left for
+    a single-tile grid to do differently: it used to stitch by matching rounded
+    positions on the unit sphere, which meant regionate and sectionate had to agree
+    on a coincidence tolerance, and which quietly merged corners a grid distinguishes
+    but places at one point -- a tripolar cap's singular meridian. Stitching is now:
 
     1. decompose arcs into directed corner-to-corner segments of node pairs
        (dropping zero-length segments between coincident corners, e.g. a fold
@@ -378,7 +323,7 @@ def _multitile_boundaries_from_mask(grid, arcs, closed, nf, Nyc, Nxc):
        loops;
     4. emit each node as the native corner that stores it, `(i_c, j_c, f_c)`.
     """
-    ot = outer_topology(grid)
+    ot = corner_topology(grid)
     node_id, node_native = ot.node_id, ot.node_native
 
     def node_of(f, jg, ig):

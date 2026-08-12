@@ -1,3 +1,4 @@
+import pytest
 import numpy as np
 import xarray as xr
 import xgcm
@@ -53,9 +54,14 @@ def test_gridded_region_from_boundary():
 def test_curve_default_is_great_circle():
     """The default boundary->grid tracing follows great circles (geodesic edges), so
     arbitrary -- including diagonal -- boundary edges are traced correctly rather than
-    collapsed onto a latitude line. `curve="latitude circle"` is still available and
-    differs: on a mid-latitude box it encloses fewer cells (its edges do not bow
-    poleward)."""
+    collapsed onto a latitude line.
+
+    The alternative for an axis-aligned box is `"latitude and great circle"`, which
+    holds the parallel where a segment's endpoints share a latitude and takes the
+    geodesic everywhere else. `"latitude circle"` on its own means every segment
+    follows a parallel, so it rejects the meridional sides of a box rather than
+    silently doing something else with them. On a mid-latitude box the combined
+    option encloses fewer cells than the geodesic, whose edges bow poleward."""
     from regionate import GriddedRegion
 
     grid = initialize_spherical_grid(N=12)
@@ -63,7 +69,10 @@ def test_curve_default_is_great_circle():
     lats = np.array([-40., -40., 40., 40.])
     default = GriddedRegion("default", lons, lats, grid)
     great_circle = GriddedRegion("great", lons, lats, grid, curve="great circle")
-    lat_circle = GriddedRegion("lat", lons, lats, grid, curve="latitude circle")
+    lat_circle = GriddedRegion("lat", lons, lats, grid,
+                               curve="latitude and great circle")
+    with pytest.raises(ValueError, match="constant latitude"):
+        GriddedRegion("bad", lons, lats, grid, curve="latitude circle")
 
     assert bool((default.mask == great_circle.mask).all())  # default IS great circle
     assert bool((default.mask != lat_circle.mask).any())    # and differs from latitude circle
