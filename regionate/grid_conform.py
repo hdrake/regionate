@@ -12,25 +12,6 @@ from .utilities import *
 from .geometry import split_at_antimeridian, normalize_lon
 
 
-def _normalize_grid_section(result):
-    """Normalize `sec.grid_section`'s 4-or-5-tuple return to always include `f_c`.
-
-    `sec.grid_section` returns ``(i_c, j_c, lons_c, lats_c)`` for single-tile grids
-    and ``(i_c, j_c, f_c, lons_c, lats_c)`` for multi-tile grids. Downstream code
-    always wants ``(i_c, j_c, f_c, lons_c, lats_c)`` with ``f_c`` set to None for
-    single-tile grids.
-    """
-    if len(result) == 5:
-        i_c, j_c, f_c, lons_c, lats_c = result
-    elif len(result) == 4:
-        i_c, j_c, lons_c, lats_c = result
-        f_c = None
-    else:
-        raise ValueError(
-            f"Unexpected `grid_section` return of length {len(result)}; "
-            "expected a 4-tuple (single-tile) or 5-tuple (multi-tile)."
-        )
-    return i_c, j_c, f_c, lons_c, lats_c
 
 
 def get_geo_centers(grid):
@@ -141,7 +122,7 @@ def get_region_boundary_grid_indices(lons, lats, grid, curve="great circle"):
 
     i_c : "X"-axis grid indices of corner points
     j_c : "Y"-axis grid indices of corner points
-    f_c : face/tile indices of corner points (None for single-tile grids)
+    f_c : face/tile indices of corner points (zeros on a single-tile grid, which is one face)
     lons_c : longitudes of corner points
     lats_c : latitudes of corner points
     lons_uv : longitudes of (u,v) velocity faces
@@ -150,7 +131,7 @@ def get_region_boundary_grid_indices(lons, lats, grid, curve="great circle"):
     if (lons[0], lats[0]) != (lons[-1], lats[-1]):
         lons, lats = loop(lons), loop(lats)
 
-    i_c, j_c, f_c, lons_c, lats_c = _normalize_grid_section(
+    i_c, j_c, f_c, lons_c, lats_c = (
         sec.grid_section(grid, lons, lats, curve=curve)
     )
     lons_uv, lats_uv = sec.uvcoords_from_qindices(grid, i_c, j_c, f_c=f_c)

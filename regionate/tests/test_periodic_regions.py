@@ -79,7 +79,7 @@ def test_periodic_x_wrapping_band_stitches_into_one_loop():
     mask = make_mask(grid, [(2, 7), (2, 0), (3, 7), (3, 0)])
     i_l, j_l, f_l, lon_l, lat_l = grid_boundaries_from_mask(grid, mask)
     assert len(i_l) == 1                                  # single stitched loop
-    assert f_l[0] is None                                 # single tile -> no face index
+    assert np.array_equal(f_l[0], np.zeros_like(f_l[0]))                                 # single tile: one face, so zeros
     # the loop spans both sides of the seam (near lon -180 and +180)
     lons = np.asarray(lon_l[0])
     assert (lons < -90).any() and (lons > 90).any()

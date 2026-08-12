@@ -312,7 +312,7 @@ def test_cube_vertex_junction_closes_for_nondivergent_flow():
     topology-independent fact that a closed loop's net transport of a non-divergent
     (streamfunction) flow is exactly zero -- which holds even at the vertices."""
     from cube_grid import cube_left_grid
-    from sectionate.gridutils import outer_topology
+    from sectionate.topology import corner_topology as outer_topology
     grid, _ = cube_left_grid()
     ot = outer_topology(grid)
     deg = np.array([len(a) for a in ot.node_adj])

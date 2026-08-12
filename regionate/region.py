@@ -8,7 +8,6 @@ from .utilities import *
 from .grid_conform import (
     get_region_boundary_grid_indices,
     mask_from_grid_boundaries,
-    _normalize_grid_section,
 )
 
 import os
@@ -148,10 +147,12 @@ class GriddedRegion(Region):
             Default: True. If True, prunes any duplicate points from the input arrays (lons, lats).
         mask : None or xr.DataArray (default: None)
             If None, does not apply any mask.
-        ij : None or list
-            If None, the indices of grid coordinates closest to provided coordinates `self.i_c` and `self.j_c`
-            are inferred from the model grid. If list, assume two elements in the list and
-            extract `self.i_c = ij[0]` and `self.j_c = ij[1]`.
+        ij : None or sequence
+            If None, the boundary is snapped onto the grid and the corner indices are
+            inferred from it. Otherwise ``(i_c, j_c, f_c)``: the corner indices to use
+            directly, with the face each corner belongs to. A single-tile grid is one
+            face, so pass zeros there rather than omitting it -- the shape does not
+            depend on the shape of the grid.
         curve : str
             Curve followed between consecutive boundary vertices when snapping the
             polygon onto the grid. Default: ``"great circle"`` (the geodesic), which
@@ -198,9 +199,13 @@ class GriddedRegion(Region):
         else:
             self.lons_c = lons
             self.lats_c = lats
-            self.i_c = ij[0]
-            self.j_c = ij[1]
-            self.f_c = ij[2] if len(ij) > 2 else None
+            if len(ij) != 3:
+                raise ValueError(
+                    f"`ij` must be (i_c, j_c, f_c); got {len(ij)} element(s). The "
+                    "face index is no longer optional -- a single-tile grid is one "
+                    "face, so pass zeros for it."
+                )
+            self.i_c, self.j_c, self.f_c = ij[0], ij[1], ij[2]
             if mask is None:
                 self.mask = mask_from_grid_boundaries(
                     self.lons_c,
@@ -289,8 +294,7 @@ class GriddedRegion(Region):
         ds['lats_c'] = xr.DataArray(np.asarray(self.lats_c), dims=('vertex',))
         ds['i_c'] = xr.DataArray(np.asarray(self.i_c), dims=('corner',))
         ds['j_c'] = xr.DataArray(np.asarray(self.j_c), dims=('corner',))
-        if getattr(self, 'f_c', None) is not None:
-            ds['f_c'] = xr.DataArray(np.asarray(self.f_c), dims=('corner',))
+        ds['f_c'] = xr.DataArray(np.asarray(self.f_c), dims=('corner',))
         for v in ['lons_uv', 'lats_uv']:
             if getattr(self, v, None) is not None:
                 ds[v] = xr.DataArray(np.asarray(getattr(self, v)), dims=('face',))
@@ -364,7 +368,7 @@ class BoundedRegion(GriddedRegion):
         parent_coords_uv = sec.coords_from_lonlat(parent_lons_uv, parent_lats_uv)
             
         for child_name, child in section.children.items():
-            i_c, j_c, f_c, lons_c, lats_c = _normalize_grid_section(
+            i_c, j_c, f_c, lons_c, lats_c = (
                 sec.grid_section(grid, child.lons_c, child.lats_c, curve=curve)
             )
 
@@ -381,7 +385,7 @@ class BoundedRegion(GriddedRegion):
                     child.lons_c = child.lons_c[::-1]
                     child.lats_c = child.lats_c[::-1]
                     # recompute the child sections using the correct orientation
-                    i_c, j_c, f_c, lons_c, lats_c = _normalize_grid_section(
+                    i_c, j_c, f_c, lons_c, lats_c = (
                         sec.grid_section(grid, child.lons_c, child.lats_c, curve=curve)
                     )
                 else:
@@ -509,7 +513,10 @@ def _open_mask_region_gr(path, name, grid, ds):
     boundaries = []
     for d in loop_dirs:
         dsb = xr.open_dataset(f"{bnd_path}/{d}/section.nc")
-        f_c = dsb.f_c.values if 'f_c' in dsb else None
+        # A file written before `f_c` was persisted is single-tile, and a
+        # single-tile grid is one face -- so zeros is the right value, and the
+        # only one `GriddedRegion` will now accept.
+        f_c = dsb.f_c.values if 'f_c' in dsb else np.zeros_like(dsb.i_c.values)
         boundaries.append(sec.GriddedSection(
             sec.Section(d[:-4], sec.coords_from_lonlat(dsb.lons_c.values, dsb.lats_c.values)),
             grid, i_c=dsb.i_c.values, j_c=dsb.j_c.values, f_c=f_c,
@@ -534,7 +541,7 @@ def open_gr(path, ds_to_grid):
     if ds.attrs.get('kind') == 'MaskRegion' or os.path.isdir(f"{path}/boundaries"):
         return _open_mask_region_gr(path, name, grid, ds)
 
-    f_c = ds.f_c.values if 'f_c' in ds else None
+    f_c = ds.f_c.values if 'f_c' in ds else np.zeros_like(ds.i_c.values)
     region = GriddedRegion(
         name,
         ds.lons_c.values,
@@ -566,7 +573,7 @@ def open_gr(path, ds_to_grid):
         # reconstruct the child as a gridded section carrying its stored corner
         # indices (i_c/j_c/f_c), mirroring how `BoundedRegion` builds children --
         # rather than discarding them and rebuilding a bare `sec.Section` from coords.
-        child_f_c = ds.f_c.values if 'f_c' in ds else None
+        child_f_c = ds.f_c.values if 'f_c' in ds else np.zeros_like(ds.i_c.values)
         section = sec.GriddedSection(
             sec.Section(
                 child_name,

@@ -19,22 +19,30 @@ from regionate import MaskRegions
 
 def fold_grid(Nx=6, Ny=4):
     """A self-contained single-tile fold grid, MOM6 'symmetric' (outer) staggering,
-    corner pivot. The bipolar seam is a LINE between two poles: seam corner (Ny, i)
-    sits at a point p(s(i)) with s(i)=min(i, -i mod Nx), so only genuine mirror pairs
-    (same s) coincide -- a fold-straddling region can only be stitched into one loop
-    by that seam coincidence, and a genuine seam boundary face is NOT dropped."""
-    def s(iq):
-        return np.minimum(iq % Nx, (-iq) % Nx)
+    corner pivot.
+
+    A cylinder, periodic in X, pinched shut as `j` rises: at row `j` the corners lie
+    on an ellipse whose two semi-axes both shrink, and the top one has zero height,
+    so the seam row collapses onto a segment traversed out and back. Corner `i` and
+    its mirror are then exactly one point -- the corner-pivot fold identity -- with
+    the two poles at `i = 0` and `i = Nx/2`.
+
+    Both semi-axes shrink so the ellipses genuinely nest and every cell of the grid
+    runs the same way round. A family whose axes moved in opposite directions would
+    cross, leaving the cells nearest the seam inside out and their velocity faces
+    signed backwards.
+    """
     xq = np.arange(Nx + 1); yq = np.arange(Ny + 1)
     xh = np.arange(Nx) + 0.5; yh = np.arange(Ny) + 0.5
-    LONc = np.zeros((Ny + 1, Nx + 1)); LATc = np.zeros((Ny + 1, Nx + 1))
-    for j in yq:
-        t = j / Ny
-        for i in xq:
-            LONc[j, i] = (1 - t) * (i * 60.0) + t * (s(i) * 30.0)
-            LATc[j, i] = 60.0 + t * (25.0 + s(i))       # seam lat 85+s(i): distinct per s
-    LON = np.add.outer(np.zeros(Ny), xh * 60.0)
-    LAT = np.add.outer(yh * (30.0 / Ny) + 61.0, np.zeros(Nx))
+
+    def lonlat(j, i):
+        theta = 2.0 * np.pi * np.asarray(i) / Nx
+        t = np.asarray(j) / Ny
+        return (25.0 * (1.0 - 0.5 * t) * np.cos(theta),
+                60.0 + 18.0 * (1.0 - t) * np.sin(theta))
+
+    LONc, LATc = lonlat(*np.meshgrid(yq, xq, indexing="ij"))
+    LON, LAT = lonlat(*np.meshgrid(yh, xh, indexing="ij"))
     ds = xr.Dataset(coords={
         "xh": ("xh", xh), "xq": ("xq", xq.astype(float)),
         "yh": ("yh", yh), "yq": ("yq", yq.astype(float)),
@@ -96,9 +104,10 @@ def test_fold_straddling_region_stitches_into_one_loop():
     mask = make_mask(grid, [(3, 1), (3, 4)])          # mirror of i=1 is Nx-1-1=4
     i_l, j_l, f_l, lon_l, lat_l = grid_boundaries_from_mask(grid, mask)
     assert len(i_l) == 1                               # a single stitched loop
-    assert f_l[0] is None                              # single tile -> no face index
+    # a single-tile grid is one face, so the face index is present and zero
+    assert np.array_equal(f_l[0], np.zeros_like(f_l[0]))
     # its six boundary faces carry no seam face (the fold face is interior)
-    uv = sec.uvindices_from_qindices(grid, i_l[0], j_l[0], f_c=None)
+    uv = sec.uvindices_from_qindices(grid, i_l[0], j_l[0], f_c=f_l[0])
     assert sum(v != "0" for v in uv["var"]) == 6
     # and MaskRegions sees one region
     assert len(MaskRegions(mask, grid).region_dict) == 1
@@ -119,7 +128,7 @@ def test_single_fold_cell_keeps_seam_boundary_face():
     mask = make_mask(grid, [(3, 1)])
     i_l, j_l, f_l, lon_l, lat_l = grid_boundaries_from_mask(grid, mask)
     assert len(i_l) == 1
-    uv = sec.uvindices_from_qindices(grid, i_l[0], j_l[0], f_c=None)
+    uv = sec.uvindices_from_qindices(grid, i_l[0], j_l[0], f_c=f_l[0])
     assert sum(v != "0" for v in uv["var"]) == 4       # W, E, S, and the fold N face
     conv, flux = _convergence_and_boundary_flux(grid, mask, seed=2)
     assert np.isclose(conv, flux, atol=1e-9)
@@ -131,7 +140,7 @@ def test_fold_interior_region_unaffected():
     mask = make_mask(grid, [(1, 2), (1, 3), (2, 2)])
     i_l, j_l, f_l, lon_l, lat_l = grid_boundaries_from_mask(grid, mask)
     assert len(i_l) == 1
-    uv = sec.uvindices_from_qindices(grid, i_l[0], j_l[0], f_c=None)
+    uv = sec.uvindices_from_qindices(grid, i_l[0], j_l[0], f_c=f_l[0])
     assert sum(v != "0" for v in uv["var"]) == 8       # L-tromino perimeter
     conv, flux = _convergence_and_boundary_flux(grid, mask, seed=3)
     assert np.isclose(conv, flux, atol=1e-9)

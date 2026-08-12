@@ -4,3 +4,7 @@ __pycache__
 
 # Version file generated from the git tag by hatch-vcs at build time.
 regionate/_version.py
+
+# Downloaded example data (large; fetched by examples/load_example_*.py)
+data/*.nc
+data/*.zarr

@@ -227,7 +227,7 @@ def _ecco_synthetic_uv(grid):
 def _ecco_convergence(grid, umo, vmo):
     """Cell convergence from the native transports via the outer corner topology.
 
-    ``sectionate.gridutils.outer_topology(grid).padded_transports`` resolves each
+    ``sectionate.topology.corner_topology(grid).padded_transports`` resolves each
     face's missing edge slots to the *stored* velocity of that physical edge, so
     the convergence telescopes exactly: its global sum is identically zero and it
     is exactly consistent with boundary fluxes read from the same native arrays.
@@ -236,7 +236,7 @@ def _ecco_convergence(grid, umo, vmo):
     stored on no face -- walls, the lon=-115 cut, the 4th Arctic vertex -- which
     no halo pad can supply a value for. xgcm#749 fixes the bare-``DataArray``
     pad path across rotated/reversed seams; the dict form was always exact.)"""
-    from sectionate.gridutils import outer_topology
+    from sectionate.topology import corner_topology as outer_topology
     Uo, Vo = outer_topology(grid).padded_transports(
         umo.transpose("tile", "j", "i_g"), vmo.transpose("tile", "j_g", "i")
     )
