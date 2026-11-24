@@ -7,7 +7,7 @@ import numpy as np
 
 from .utilities import *
 
-def get_region_boundary_grid_indices(lons, lats, grid):
+def get_region_boundary_grid_indices(lons, lats, grid, topology="MOM-tripolar"):
     """Find boundary coordinates and grid indices that approximate a polygon.
 
     ARGUMENTS
@@ -15,6 +15,12 @@ def get_region_boundary_grid_indices(lons, lats, grid):
     lons : list or np.ndarray of longitudes
     lats : list or np.ndarray of latitudes
     grid : `xgcm.Grid` instance
+    topology : str (default: "MOM-tripolar")
+        Grid topology, passed to `sectionate.grid_section`: "MOM-tripolar", "latlon", or
+        "cartesian". "MOM-tripolar" is for a grid whose northernmost row of corner points is a
+        bipolar fold, which the boundary can then cross. Pass "latlon" (or "cartesian") for a
+        grid without a fold: sectionate versions that check for the fold raise a ValueError
+        if "MOM-tripolar" is used on such a grid.
     
     RETURNS
     -------
@@ -26,6 +32,10 @@ def get_region_boundary_grid_indices(lons, lats, grid):
     lats_c : latitudes of corner points
     lons_uv : longitudes of (u,v) velocity faces
     lats_uv : latitudes of (u,v) velocity faces
+
+    There is one velocity face per step between distinct corner points. Where the boundary
+    crosses a tripolar fold, the crossing point appears twice in a row in (i_c, j_c) (once
+    with its index on each side of the fold), so there can be fewer faces than corners - 1.
     """
     if (lons[0], lats[0]) != (lons[-1], lats[-1]):
         lons, lats = loop(lons), loop(lats)
@@ -34,7 +44,7 @@ def get_region_boundary_grid_indices(lons, lats, grid):
         grid,
         lons,
         lats,
-        topology="MOM-tripolar"
+        topology=topology
     )
     lons_uv, lats_uv = sec.uvcoords_from_qindices(grid, i_c, j_c)
 

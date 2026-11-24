@@ -37,7 +37,7 @@ def test_gridded_region_from_boundary():
     latseg = np.array([0.,   0.,   0.,  0.])
 
     grid = initialize_spherical_grid()
-    region = GriddedRegion("test_region1", lonseg, latseg, grid)
+    region = GriddedRegion("test_region1", lonseg, latseg, grid, topology="latlon")
 
     dists = distance_on_unit_sphere(
         region.lons_c,
@@ -47,7 +47,7 @@ def test_gridded_region_from_boundary():
     )
     assert np.all(np.isclose(dists, 0., atol=1.e-6))
 
-    region_rev = GriddedRegion("test_region2", lonseg[::-1], latseg[::-1], grid)
+    region_rev = GriddedRegion("test_region2", lonseg[::-1], latseg[::-1], grid, topology="latlon")
     assert np.all(np.equal(region.mask, region_rev.mask))
     
 def test_gridded_region_from_mask():

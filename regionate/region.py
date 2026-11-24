@@ -128,6 +128,7 @@ class GriddedRegion(Region):
         positive_in=True,
         mask=None,
         ij=None,
+        topology="MOM-tripolar",
         ):
         """
         Create a Region object (named `name`) from arrays of (`lons`, `lats`) and an ocean model `grid`. 
@@ -149,6 +150,14 @@ class GriddedRegion(Region):
             If None, the indices of grid coordinates closest to provided coordinates `self.i_c` and `self.j_c`
             are inferred from the model grid. If list, assume two elements in the list and
             extract `self.i_c = ij[0]` and `self.j_c = ij[1]`.
+        topology : str (default: "MOM-tripolar")
+            Topology of `grid`, used when tracing the boundary along the grid (see
+            `sectionate.grid_section`): "MOM-tripolar", "latlon", or "cartesian".
+            "MOM-tripolar" is for a grid whose northernmost row of corner points is a bipolar
+            fold, which the boundary can then cross. Pass "latlon" (or "cartesian") for a grid
+            without a fold: sectionate versions that check for the fold raise a ValueError if
+            "MOM-tripolar" is used on such a grid. (Up to v0.5.7 the topology could not be
+            chosen; every grid was treated as "MOM-tripolar".)
 
         RETURNS
         -------
@@ -165,6 +174,7 @@ class GriddedRegion(Region):
             raise ValueError("grid._ds must contain coordinates of grid cell corners, named 'geolon_c' and 'geolat_c'.")
 
         self.grid = grid
+        self.topology = topology
         self.save = {}
         
         if len(lons)>=3 and len(lats)>=3 and ij is None:
@@ -213,7 +223,8 @@ class GriddedRegion(Region):
             get_region_boundary_grid_indices(
                 lons.copy(),
                 lats.copy(),
-                self.grid
+                self.grid,
+                topology=self.topology
             )
         )
         if mask is None:
@@ -333,7 +344,7 @@ class BoundedRegion(GriddedRegion):
         parent_coords_uv = sec.coords_from_lonlat(parent_lons_uv, parent_lats_uv)
             
         for child_name, child in section.children.items():
-            i_c, j_c, lons_c, lats_c = sec.grid_section(grid, child.lons_c, child.lats_c)
+            i_c, j_c, lons_c, lats_c = sec.grid_section(grid, child.lons_c, child.lats_c, topology=self.topology)
             
             child_coords = sec.coords_from_lonlat(lons_c, lats_c)
 
@@ -348,7 +359,7 @@ class BoundedRegion(GriddedRegion):
                     child.lons_c = child.lons_c[::-1]
                     child.lats_c = child.lats_c[::-1]
                     # recompute the child sections using the correct orientation
-                    i_c, j_c, lons_c, lats_c = sec.grid_section(grid, child.lons_c, child.lats_c)
+                    i_c, j_c, lons_c, lats_c = sec.grid_section(grid, child.lons_c, child.lats_c, topology=self.topology)
                 else:
                     raise ValueError("Child corner sections do not match up with parent ones!")
             
