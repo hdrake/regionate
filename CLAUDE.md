@@ -53,7 +53,7 @@ Consequences worth remembering when editing:
 The class hierarchy in `regionate/region.py` is the spine of the package:
 
 - **`Region`** — a named polygon, just `(lons, lats)` corner arrays. Can force counterclockwise winding (`is_section_counterclockwise` from sectionate) and prune duplicate points. No grid awareness.
-- **`GriddedRegion(Region)`** — a `Region` bound to an `xgcm.Grid`. Construction calls `get_region_boundary_grid_indices` + `mask_from_grid_boundaries` (in `grid_conform.py`) to compute: corner grid indices (`i_c`, `j_c`), the boundary `(u,v)` velocity faces, and the boolean cell `mask`. This is the central object — masks and boundaries are the whole point.
+- **`GriddedRegion(Region)`** — a `Region` bound to an `xgcm.Grid`. Construction calls `get_region_boundary_grid_indices` + `mask_from_grid_boundaries` (in `grid_conform.py`) to compute: corner grid indices (`i_c`, `j_c`), the boundary `(u,v)` velocity faces, and the boolean cell `mask`. This is the central object — masks and boundaries are the whole point. The boundary is traced with the grid `topology` keyword (`"MOM-tripolar"` by default, for a grid whose top corner row is a bipolar fold; callers with any other grid pass `"latlon"` or `"cartesian"`, because sectionate versions that verify the fold reject `"MOM-tripolar"` on a grid without one). The keyword goes away with the topology-from-xgcm sectionate API (regionate 0.6).
 - **`BoundedRegion(GriddedRegion)`** — a GriddedRegion whose boundary is defined by named sections rather than a raw polygon.
 
 Supporting modules:
